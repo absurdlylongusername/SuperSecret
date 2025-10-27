@@ -10,38 +10,38 @@ public class SuperSecretModel : PageModel
     private readonly ILinkStore _linkStore;
 
     public bool Success { get; private set; }
-  public string Username { get; private set; } = "";
+    public string Username { get; private set; } = "";
 
     public SuperSecretModel(ITokenService tokenService, ILinkStore linkStore)
- {
+    {
         _tokenService = tokenService;
-   _linkStore = linkStore;
+        _linkStore = linkStore;
     }
 
     public async Task OnGetAsync(string token)
     {
-    // Add no-cache headers
-        Response.Headers["Cache-Control"] = "no-store";
+        // Add no-cache headers
+        Response.Headers.CacheControl = "no-store";
 
         if (string.IsNullOrWhiteSpace(token))
-   return;
+            return;
 
-      var claims = _tokenService.Validate(token);
+        var claims = _tokenService.Validate(token);
         if (claims is null)
-     return;
+            return;
 
-  var maxClicks = claims.Max ?? 1;
-    if (maxClicks == 1)
+        var maxClicks = claims.Max ?? 1;
+        if (maxClicks == 1)
         {
-    Success = await _linkStore.ConsumeSingleUseAsync(claims.Jti, claims.Exp);
-  }
+            Success = await _linkStore.ConsumeSingleUseAsync(claims.Jti, claims.Exp);
+        }
         else
-     {
+        {
             var remaining = await _linkStore.ConsumeMultiUseAsync(claims.Jti, claims.Exp);
-Success = remaining.HasValue; // null = deny; 0 or >0 = allowed
+            Success = remaining.HasValue;
         }
 
         if (Success)
-   Username = claims.Sub;
+            Username = claims.Sub;
     }
 }

@@ -1,82 +1,62 @@
 using Dapper;
-using Microsoft.Data.SqlClient;
+using NUlid;
+using SuperSecret.Infrastructure;
 using SuperSecret.Models;
 
 namespace SuperSecret.Services;
 
 public class SqlLinkStore : ILinkStore
 {
-    private readonly string _connectionString;
+    private readonly IDbConnectionFactory _connectionFactory;
 
-    public SqlLinkStore(IConfiguration configuration)
+    public SqlLinkStore(IDbConnectionFactory connectionFactory)
     {
-        _connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? throw new InvalidOperationException("DefaultConnection not configured");
+        _connectionFactory = connectionFactory;
     }
 
     public async Task CreateAsync(SecretLinkClaims claims)
     {
-        using var conn = new SqlConnection(_connectionString);
-        await conn.OpenAsync();
+        await using var conn = await _connectionFactory.CreateOpenConnectionAsync().ConfigureAwait(false);
 
+        var jtiBytes = claims.Jti.ToByteArray();
         var maxClicks = claims.Max ?? 1;
+
         if (maxClicks == 1)
         {
-            // Single-use link
             await conn.ExecuteAsync(
-                "INSERT INTO dbo.SingleUseLinks (Jti, ExpiresAt) VALUES (@jti, @expiresAt)",
-                new { jti = claims.Jti, expiresAt = claims.Exp?.UtcDateTime });
+                "dbo.CreateSingleUseLink",
+                new { jti = jtiBytes, expiresAt = claims.Exp?.UtcDateTime },
+                commandType: System.Data.CommandType.StoredProcedure);
         }
         else
         {
-            // Multi-use link
             await conn.ExecuteAsync(
-                "INSERT INTO dbo.MultiUseLinks (Jti, ClicksLeft, ExpiresAt) VALUES (@jti, @clicksLeft, @expiresAt)",
-                new { jti = claims.Jti, clicksLeft = maxClicks, expiresAt = claims.Exp?.UtcDateTime });
+                "dbo.CreateMultiUseLink",
+                new { jti = jtiBytes, clicksLeft = maxClicks, expiresAt = claims.Exp?.UtcDateTime },
+                commandType: System.Data.CommandType.StoredProcedure);
         }
     }
 
-    public async Task<bool> ConsumeSingleUseAsync(string jti, DateTimeOffset? expUtc)
+    public async Task<bool> ConsumeSingleUseAsync(Ulid jti, DateTimeOffset? expUtc)
     {
-        using var conn = new SqlConnection(_connectionString);
-        await conn.OpenAsync();
+        await using var conn = await _connectionFactory.CreateOpenConnectionAsync().ConfigureAwait(false);
 
-        var rowsAffected = await conn.ExecuteAsync(
-            @"DELETE FROM dbo.SingleUseLinks
-              WHERE Jti=@jti AND (ExpiresAt IS NULL OR ExpiresAt > SYSUTCDATETIME())",
-            new { jti });
+        var rowsAffected = await conn.QuerySingleOrDefaultAsync<int>(
+            "dbo.ConsumeSingleUseLink",
+            new { jti = jti.ToByteArray() },
+            commandType: System.Data.CommandType.StoredProcedure);
 
         return rowsAffected > 0;
     }
 
-    public async Task<int?> ConsumeMultiUseAsync(string jti, DateTimeOffset? expUtc)
+    public async Task<int?> ConsumeMultiUseAsync(Ulid jti, DateTimeOffset? expUtc)
     {
-        using var conn = new SqlConnection(_connectionString);
-        await conn.OpenAsync();
+        await using var conn = await _connectionFactory.CreateOpenConnectionAsync().ConfigureAwait(false);
 
-        // Execute the transaction-based multi-use consumption logic
         var result = await conn.QuerySingleOrDefaultAsync<int?>(
-            @"SET NOCOUNT ON;
-BEGIN TRANSACTION;
-
-UPDATE dbo.MultiUseLinks
-SET ClicksLeft = ClicksLeft - 1
-WHERE Jti=@jti AND ClicksLeft>0
-    AND (ExpiresAt IS NULL OR ExpiresAt > SYSUTCDATETIME());
-
-IF @@ROWCOUNT = 0
-BEGIN
-    ROLLBACK TRANSACTION;
-    SELECT CAST(NULL AS INT) AS Remaining;
-    RETURN;
-END;
-
-DELETE FROM dbo.MultiUseLinks WHERE Jti=@jti AND ClicksLeft=0;
-
-COMMIT TRANSACTION;
-
-SELECT COALESCE((SELECT ClicksLeft FROM dbo.MultiUseLinks WHERE Jti=@jti), 0) AS Remaining;",
-            new { jti });
+            "dbo.ConsumeMultiUseLink",
+            new { jti = jti.ToByteArray() },
+            commandType: System.Data.CommandType.StoredProcedure);
 
         return result;
     }

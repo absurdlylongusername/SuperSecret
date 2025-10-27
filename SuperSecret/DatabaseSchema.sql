@@ -14,7 +14,7 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'SingleUseLinks' AND schema_id = SCHEMA_ID('dbo'))
 BEGIN
     CREATE TABLE dbo.SingleUseLinks (
-        Jti       CHAR(26)    NOT NULL PRIMARY KEY,
+        Jti       BINARY(16)  NOT NULL PRIMARY KEY
       CreatedAt DATETIME2   NOT NULL DEFAULT SYSUTCDATETIME(),
     ExpiresAt DATETIME2   NULL
     );
@@ -27,7 +27,7 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'MultiUseLinks' AND schema_id = SCHEMA_ID('dbo'))
 BEGIN
     CREATE TABLE dbo.MultiUseLinks (
-        Jti         CHAR(26)   NOT NULL PRIMARY KEY,
+        Jti         BINARY(16) NOT NULL PRIMARY KEY
  ClicksLeft  INT        NOT NULL,
         CreatedAt   DATETIME2  NOT NULL DEFAULT SYSUTCDATETIME(),
         ExpiresAt   DATETIME2  NULL,
@@ -37,5 +37,3 @@ BEGIN
     CREATE INDEX IX_MultiUse_Expires ON dbo.MultiUseLinks (ExpiresAt);
 END
 GO
-
-PRINT 'SuperSecret database schema created successfully!';

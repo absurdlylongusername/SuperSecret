@@ -1,3 +1,4 @@
+using NUlid;
 using SuperSecret.Models;
 
 namespace SuperSecret.Services;
@@ -5,6 +6,6 @@ namespace SuperSecret.Services;
 public interface ILinkStore
 {
     Task CreateAsync(SecretLinkClaims claims);
-    Task<bool> ConsumeSingleUseAsync(string jti, DateTimeOffset? expUtc);
-    Task<int?> ConsumeMultiUseAsync(string jti, DateTimeOffset? expUtc);
+    Task<bool> ConsumeSingleUseAsync(Ulid jti, DateTimeOffset? expUtc); // Changed from string
+    Task<int?> ConsumeMultiUseAsync(Ulid jti, DateTimeOffset? expUtc);   // Changed from string
 }

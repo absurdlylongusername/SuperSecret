@@ -1,120 +1,45 @@
 @page
 @model SuperSecret.Pages.Admin.IndexModel
-@{
-    ViewData["Title"] = "Admin - Create Link";
+
+<form method="post">
+    <div asp-validation-summary="ModelOnly"></div>
+
+    <label asp-for="Input.Username"></label>
+    <input asp-for="Input.Username" />
+    <span asp-validation-for="Input.Username"></span>
+    <br /><br />
+
+    <label asp-for="Input.Max"></label>
+    <input asp-for="Input.Max" type="number" />
+    <span asp-validation-for="Input.Max"></span>
+    <br /><br />
+
+    <label asp-for="Input.ExpiresAt"></label>
+    <input asp-for="Input.ExpiresAt" type="datetime-local" />
+    <span asp-validation-for="Input.ExpiresAt"></span>
+    <br /><br />
+
+    <button type="submit">Generate Link</button>
+</form>
+
+@if (!string.IsNullOrEmpty(Model.GeneratedUrl))
+{
+    <br />
+    <input type="text" id="generatedUrl" value="@Model.GeneratedUrl" readonly style="width:100%" />
+    <button type="button" onclick="copyLink()">Copy to Clipboard</button>
+    <span id="copyStatus" style="display:none;color:green;">Link copied!</span>
 }
 
-<div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-8">
- <div class="card shadow">
-     <div class="card-header bg-primary text-white">
-    <h2 class="mb-0">Create SuperSecret Link</h2>
-     </div>
-    <div class="card-body">
-        <form id="linkForm">
-            <div class="mb-3">
-           <label for="username" class="form-label">Username <span class="text-danger">*</span></label>
-              <input type="text" class="form-control" id="username" name="username" 
-               placeholder="Enter username (max 50 alphanumeric characters)" 
-       pattern="[A-Za-z0-9]{1,50}" 
-                   required maxlength="50">
-    <div class="form-text">Only letters and numbers allowed, max 50 characters.</div>
-        </div>
-
-     <div class="mb-3">
-        <label for="maxClicks" class="form-label">Max Clicks</label>
-        <input type="number" class="form-control" id="maxClicks" name="maxClicks" 
- value="1" min="1" max="1000">
-          <div class="form-text">How many times can this link be used? Default is 1 (single-use).</div>
-            </div>
-
-        <div class="mb-3">
-           <label for="expiresAt" class="form-label">Expires At (Optional)</label>
-        <input type="datetime-local" class="form-control" id="expiresAt" name="expiresAt">
-    <div class="form-text">Leave blank for no expiration.</div>
-            </div>
-
-             <button type="submit" class="btn btn-primary btn-lg w-100">Generate Link</button>
-         </form>
-
-      <div id="result" class="mt-4" style="display: none;">
-      <div class="alert alert-success">
-      <h4>Link Created Successfully!</h4>
-    <div class="input-group">
-  <input type="text" class="form-control" id="generatedUrl" readonly>
-     <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard()">
-Copy
-       </button>
-     </div>
-        </div>
-        </div>
-
-    <div id="error" class="mt-4 alert alert-danger" style="display: none;"></div>
-                </div>
-     </div>
- </div>
-    </div>
-</div>
-
 @section Scripts {
+    <partial name="_ValidationScriptsPartial" />
     <script>
-        document.getElementById('linkForm').addEventListener('submit', async (e) => {
- e.preventDefault();
-       
-   const username = document.getElementById('username').value;
-    const maxClicks = parseInt(document.getElementById('maxClicks').value) || 1;
-         const expiresAtInput = document.getElementById('expiresAt').value;
-        
-     // Validate username
-     if (!/^[A-Za-z0-9]{1,50}$/.test(username)) {
-   showError('Username must be 1-50 alphanumeric characters only.');
- return;
-      }
-            
-        const payload = {
-  username: username,
-    max: maxClicks
-         };
-            
-       if (expiresAtInput) {
-         payload.expiresAt = new Date(expiresAtInput).toISOString();
-    }
-    
-            try {
-          const response = await fetch('/api/links', {
-       method: 'POST',
-         headers: {
-      'Content-Type': 'application/json'
-    },
-      body: JSON.stringify(payload)
-            });
-            
-   if (response.ok) {
-          const data = await response.json();
-          document.getElementById('generatedUrl').value = data.url;
-    document.getElementById('result').style.display = 'block';
-      document.getElementById('error').style.display = 'none';
-                } else {
-           const errorText = await response.text();
-         showError(errorText || 'Failed to create link');
-          }
-  } catch (error) {
-          showError('An error occurred: ' + error.message);
-       }
-        });
-   
-   function showError(message) {
-         document.getElementById('error').textContent = message;
-   document.getElementById('error').style.display = 'block';
-     document.getElementById('result').style.display = 'none';
-        }
-      
-        function copyToClipboard() {
-            const urlInput = document.getElementById('generatedUrl');
-        urlInput.select();
-            document.execCommand('copy');
-        alert('Link copied to clipboard!');
+        function copyLink() {
+            const input = document.getElementById('generatedUrl');
+            input.select();
+            navigator.clipboard.writeText(input.value);
+            const status = document.getElementById('copyStatus');
+            status.style.display = 'inline';
+            setTimeout(() => status.style.display = 'none', 2000);
         }
     </script>
 }

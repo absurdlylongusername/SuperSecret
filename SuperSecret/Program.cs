@@ -1,35 +1,43 @@
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Options;
+using SuperSecret.Infrastructure;
 using SuperSecret.Models;
 using SuperSecret.Services;
 
-
-
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// Options
+builder.Services.Configure<TokenOptions>(o =>
+{
+    o.SigningKey = builder.Configuration["TokenSigningKey"];
+});
+
+builder.Services.Configure<DatabaseOptions>(o =>
+{
+    o.ConnectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+});
+
+// Infrastructure
+builder.Services.AddSingleton<IDbConnectionFactory, SqlConnectionFactory>();
+
+// Services
 builder.Services.AddRazorPages();
 builder.Services.AddSingleton<ITokenService, TokenService>();
 builder.Services.AddScoped<ILinkStore, SqlLinkStore>();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
-
 app.UseRouting();
-
 app.UseAuthorization();
-
 app.MapStaticAssets();
-app.MapRazorPages()
-   .WithStaticAssets();
+app.MapRazorPages().WithStaticAssets();
 
 // API Endpoints
 var api = app.MapGroup("/api");
@@ -38,7 +46,7 @@ api.MapPost("/links", async (CreateLinkRequest req, ITokenService tokenService, 
 {
     // Validate username
     if (string.IsNullOrWhiteSpace(req.Username) || req.Username.Length > 50 || !UsernameRegex().IsMatch(req.Username))
-  {
+    {
         return Results.BadRequest("Username must be 1-50 alphanumeric characters only.");
     }
 
@@ -54,16 +62,19 @@ api.MapPost("/links", async (CreateLinkRequest req, ITokenService tokenService, 
         return Results.BadRequest("Expiry date must be in the future.");
     }
 
-    // Create claims and linkStore
+    // Create claims and store
     var claims = tokenService.Create(req.Username, req.Max, req.ExpiresAt);
     await linkStore.CreateAsync(claims);
 
     // Generate URL
-    var token = tokenService.Pack(claims);
+    var token = tokenService.TokenToJson(claims);
     var url = $"{ctx.Request.Scheme}://{ctx.Request.Host}/supersecret/{token}";
 
     return Results.Ok(new CreateLinkResponse(url));
 });
+
+// Redirect root to admin
+app.MapGet("/", () => Results.Redirect("/Admin"));
 
 app.Run();
 
