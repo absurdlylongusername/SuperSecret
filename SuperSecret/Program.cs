@@ -9,7 +9,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Options
 builder.Services.Configure<TokenOptions>(o =>
 {
-    o.SigningKey = builder.Configuration["TokenSigningKey"];
+    o.TokenSigningKey = builder.Configuration[nameof(TokenOptions.TokenSigningKey)];
 });
 
 builder.Services.Configure<DatabaseOptions>(o =>
@@ -57,7 +57,7 @@ api.MapPost("/links", async (CreateLinkRequest req, ITokenService tokenService, 
     }
 
     // Validate expiry date (if provided, must be in the future)
-    if (req.ExpiresAt.GetValueOrDefault() <= DateTimeOffset.UtcNow)
+    if (req.ExpiresAt.HasValue && req.ExpiresAt.Value <= DateTimeOffset.UtcNow)
     {
         return Results.BadRequest("Expiry date must be in the future.");
     }
@@ -80,7 +80,7 @@ app.Run();
 
 
 
-partial class Program
+public partial class Program
 {
     [GeneratedRegex("^[A-Za-z0-9]+$")]
     private static partial Regex UsernameRegex();

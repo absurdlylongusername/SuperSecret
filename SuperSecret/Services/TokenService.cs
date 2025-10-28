@@ -17,7 +17,7 @@ public class TokenService : ITokenService
 
     public TokenService(IOptions<TokenOptions> options)
     {
-        var key = options.Value.SigningKey;
+        var key = options.Value.TokenSigningKey;
         if (string.IsNullOrWhiteSpace(key))
             throw new InvalidOperationException("TokenOptions.SigningKey is not configured.");
 

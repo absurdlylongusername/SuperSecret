@@ -4,6 +4,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.AspNetCore.WebUtilities;
 using NUlid;
 using SuperSecret.Services;
+using Microsoft.Extensions.Options;
+using SuperSecret.Infrastructure;
 
 namespace SuperSecretTests;
 
@@ -16,14 +18,7 @@ public class TokenServiceTests
     [OneTimeSetUp]
     public void OneTimeSetUp()
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["TokenSigningKey"] = DefaultKey
-            })
-            .Build();
-
-        _service = new TokenService(configuration);
+        _service = CreateService(DefaultKey);
     }
 
     [Test]
@@ -106,7 +101,7 @@ public class TokenServiceTests
     {
         // Arrange
         var customKey = "abcdefghijklmnopqrstuvwxyz012345abcdefghijklmnopqrstuvwxyz";
-        var serviceWithCustomKey = CreateServiceWithKey(customKey);
+        var serviceWithCustomKey = CreateService(customKey);
         var headerBase64 = Base64UrlEncode("{\"alg\":\"HS256\",\"typ\":\"JWT\"}");
         var payloadJson = $"{{\"jti\":\"{Ulid.NewUlid()}\",\"ver\":1}}"; // no sub
         var payloadBase64 = Base64UrlEncode(payloadJson);
@@ -126,7 +121,7 @@ public class TokenServiceTests
     {
         // Arrange
         var customKey = "abcdefghijklmnopqrstuvwxyz012345abcdefghijklmnopqrstuvwxyz";
-        var serviceWithCustomKey = CreateServiceWithKey(customKey);
+        var serviceWithCustomKey = CreateService(customKey);
         var headerBase64 = Base64UrlEncode("{\"alg\":\"HS256\",\"typ\":\"JWT\"}");
         var payloadJson = "{\"sub\":\"dave\",\"jti\":\"not-a-ulid\",\"ver\":1}";
         var payloadBase64 = Base64UrlEncode(payloadJson);
@@ -141,16 +136,11 @@ public class TokenServiceTests
         Assert.That(validatedClaims, Is.Null);
     }
 
-    private static TokenService CreateServiceWithKey(string key)
+    private static TokenService CreateService(string key)
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["TokenSigningKey"] = key
-            })
-            .Build();
-
-        return new TokenService(configuration);
+        var tokenOptions = new TokenOptions { TokenSigningKey = key };
+        var options = Options.Create(tokenOptions);
+        return new TokenService(options);
     }
 
     private static string Base64UrlEncode(string value)

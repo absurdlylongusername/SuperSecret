@@ -1,0 +1,5 @@
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Data Source=DAVE23\\SQLSERVER;Initial Catalog=SuperSecretDb;Integrated Security=True;Trust Server Certificate=True"
+  }
+}

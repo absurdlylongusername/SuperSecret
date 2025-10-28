@@ -16,7 +16,7 @@ public class SqlLinkStore : ILinkStore
 
     public async Task CreateAsync(SecretLinkClaims claims)
     {
-        await using var conn = await _connectionFactory.CreateOpenConnectionAsync().ConfigureAwait(false);
+        await using var conn = await _connectionFactory.CreateOpenConnectionAsync();
 
         var jtiBytes = claims.Jti.ToByteArray();
         var maxClicks = claims.Max ?? 1;
@@ -39,19 +39,19 @@ public class SqlLinkStore : ILinkStore
 
     public async Task<bool> ConsumeSingleUseAsync(Ulid jti, DateTimeOffset? expUtc)
     {
-        await using var conn = await _connectionFactory.CreateOpenConnectionAsync().ConfigureAwait(false);
+        await using var conn = await _connectionFactory.CreateOpenConnectionAsync();
 
-        var rowsAffected = await conn.QuerySingleOrDefaultAsync<int>(
-            "dbo.ConsumeSingleUseLink",
-            new { jti = jti.ToByteArray() },
-            commandType: System.Data.CommandType.StoredProcedure);
+        var rowsAffected = 
+            await conn.QuerySingleAsync<int>("dbo.ConsumeSingleUseLink",
+                                             new { jti = jti.ToByteArray() },
+                                             commandType: System.Data.CommandType.StoredProcedure);
 
         return rowsAffected > 0;
     }
 
     public async Task<int?> ConsumeMultiUseAsync(Ulid jti, DateTimeOffset? expUtc)
     {
-        await using var conn = await _connectionFactory.CreateOpenConnectionAsync().ConfigureAwait(false);
+        await using var conn = await _connectionFactory.CreateOpenConnectionAsync();
 
         var result = await conn.QuerySingleOrDefaultAsync<int?>(
             "dbo.ConsumeMultiUseLink",
