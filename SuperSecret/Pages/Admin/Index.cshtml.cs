@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using SuperSecret.Models;
@@ -5,21 +6,14 @@ using SuperSecret.Services;
 
 namespace SuperSecret.Pages.Admin;
 
-public class IndexModel : PageModel
+public class IndexModel(ITokenService tokenService,
+                        ILinkStore linkStore,
+                        IValidator<CreateLinkRequest> validator) : PageModel
 {
-    private readonly ITokenService _tokenService;
-    private readonly ILinkStore _linkStore;
-
     [BindProperty]
     public CreateLinkViewModel Input { get; set; } = new();
 
     public string? GeneratedUrl { get; set; }
-
-    public IndexModel(ITokenService tokenService, ILinkStore linkStore)
-    {
-        _tokenService = tokenService;
-        _linkStore = linkStore;
-    }
 
     public void OnGet()
     {
@@ -32,19 +26,24 @@ public class IndexModel : PageModel
             return Page();
         }
 
-        // Validate expiry is in future if provided
-        if (Input.ExpiresAt.HasValue && Input.ExpiresAt.Value <= DateTimeOffset.UtcNow)
+        var request = new CreateLinkRequest(Input.Username, Input.Max, Input.ExpiresAt);
+        var validationResult = await validator.ValidateAsync(request);
+
+        if (!validationResult.IsValid)
         {
-            ModelState.AddModelError(nameof(Input.ExpiresAt), "Expiry date must be in the future.");
+            foreach (var error in validationResult.Errors)
+            {
+                ModelState.AddModelError(error.PropertyName, error.ErrorMessage);
+            }
             return Page();
         }
 
         // Create claims and store
-        var claims = _tokenService.Create(Input.Username, Input.Max, Input.ExpiresAt);
-        await _linkStore.CreateAsync(claims);
+        var claims = tokenService.Create(Input.Username, Input.Max, Input.ExpiresAt);
+        await linkStore.CreateAsync(claims);
 
         // Generate URL
-        var token = _tokenService.TokenToJson(claims);
+        var token = tokenService.TokenToJson(claims);
         GeneratedUrl = $"{Request.Scheme}://{Request.Host}/supersecret/{token}";
 
         return Page();

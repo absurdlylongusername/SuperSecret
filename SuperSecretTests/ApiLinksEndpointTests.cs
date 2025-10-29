@@ -1,13 +1,12 @@
-using System;
 using System.Net;
 using System.Net.Http.Json;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using NUlid;
 using SuperSecret.Models;
 using SuperSecret.Services;
+using SuperSecret.Validators;
 
 namespace SuperSecretTests;
 
@@ -69,12 +68,17 @@ public class ApiLinksEndpointTests
 
     // ---------- Request validation - Username ----------
 
-    [TestCase("")]
-    [TestCase("    ")]
-    [TestCase("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab")]
-    [TestCase("user@test")]
-    [TestCase("user@test")]
-    public async Task PostLinks_ReturnsBadRequest_WhenInvalidUserName(string userName)
+    private static IEnumerable<TestCaseData> InvalidUsernameTestCases()
+    {
+        yield return new TestCaseData("", ValidationMessages.UsernameRequired);
+        yield return new TestCaseData("    ", ValidationMessages.UsernameRequired);
+        yield return new TestCaseData(new string('a', 51), ValidationMessages.UsernameLength);
+        yield return new TestCaseData("user@test", ValidationMessages.UsernameAlphanumeric);
+        yield return new TestCaseData("user test", ValidationMessages.UsernameAlphanumeric);
+    }
+
+    [TestCaseSource(nameof(InvalidUsernameTestCases))]
+    public async Task PostLinks_ReturnsBadRequest_WhenInvalidUserName(string userName, string expectedErrorMessage)
     {
         // Arrange
         var request = new CreateLinkRequest(userName, 1, null);
@@ -85,7 +89,7 @@ public class ApiLinksEndpointTests
         // Assert
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
         var content = await response.Content.ReadAsStringAsync();
-        Assert.That(content, Does.Contain("Username must be 1-50 alphanumeric characters only"));
+        Assert.That(content, Does.Contain(expectedErrorMessage));
     }
 
     [Test]
@@ -122,7 +126,7 @@ public class ApiLinksEndpointTests
         // Assert
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
         var content = await response.Content.ReadAsStringAsync();
-        Assert.That(content, Does.Contain("Max clicks must be at least 1"));
+        Assert.That(content, Does.Contain(ValidationMessages.MaxClicksMinimum));
     }
 
     [Test]
@@ -152,7 +156,7 @@ public class ApiLinksEndpointTests
         // Assert
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
         var content = await response.Content.ReadAsStringAsync();
-        Assert.That(content, Does.Contain("Expiry date must be in the future"));
+        Assert.That(content, Does.Contain(ValidationMessages.ExpiryDateFuture));
     }
 
     [Test]

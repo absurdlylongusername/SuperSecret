@@ -1,10 +1,9 @@
-using System;
-using System.Threading.Tasks;
+using FluentValidation;
+using FluentValidation.Results;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure;
 using Microsoft.AspNetCore.Routing;
 using Moq;
 using NUlid;
@@ -21,12 +20,13 @@ public class AdminIndexPageTests
 
     private readonly Mock<ITokenService> _tokenServiceMock = new(MockBehavior.Strict);
     private readonly Mock<ILinkStore> _linkStoreMock = new(MockBehavior.Strict);
+    private readonly Mock<IValidator<CreateLinkRequest>> _validatorMock = new(MockBehavior.Strict);
     private IndexModel _page;
 
     [SetUp]
     public void SetUp()
     {
-        _page = CreatePage(_tokenServiceMock.Object, _linkStoreMock.Object);
+        _page = CreatePage(_tokenServiceMock.Object, _linkStoreMock.Object, _validatorMock.Object);
     }
 
     [TearDown]
@@ -34,6 +34,7 @@ public class AdminIndexPageTests
     {
         _tokenServiceMock.Reset();
         _linkStoreMock.Reset();
+        _validatorMock.Reset();
         _page = default!;
     }
 
@@ -81,7 +82,7 @@ public class AdminIndexPageTests
     private static IEnumerable<TestCaseData> OnPostAsync_ReturnsPage_WhenInvalidExpiryDate_TestCases()
     {
         yield return new TestCaseData(DateTimeOffset.UtcNow);
-        yield return new TestCaseData(DateTimeOffset.UtcNow.AddMinutes(10));
+        yield return new TestCaseData(DateTimeOffset.UtcNow.AddMinutes(-10));
     }
 
     [TestCaseSource(nameof(OnPostAsync_ReturnsPage_WhenInvalidExpiryDate_TestCases))]
@@ -92,6 +93,11 @@ public class AdminIndexPageTests
         _page.Input.Max = 1;
         _page.Input.ExpiresAt = expiresAt;
 
+        var validationFailure = new ValidationFailure("ExpiresAt", "Expiry date must be in the future");
+        var validationResult = new ValidationResult([validationFailure]);
+
+        SetupValidator(_page.Input, validationResult, Times.Once());
+
         // Act
         var result = await _page.OnPostAsync();
 
@@ -100,11 +106,12 @@ public class AdminIndexPageTests
         {
             Assert.That(result, Is.InstanceOf<PageResult>());
             Assert.That(_page.ModelState.IsValid, Is.False);
-            Assert.That(_page.ModelState[nameof(_page.Input.ExpiresAt)]?.Errors, Has.Count.EqualTo(1));
+            Assert.That(_page.ModelState["ExpiresAt"]?.Errors, Has.Count.EqualTo(1));
         });
-        Assert.That(_page.ModelState[nameof(_page.Input.ExpiresAt)]!.Errors[0].ErrorMessage,
-            Is.EqualTo("Expiry date must be in the future."));
+        Assert.That(_page.ModelState["ExpiresAt"]!.Errors[0].ErrorMessage,
+            Is.EqualTo("Expiry date must be in the future"));
         _tokenServiceMock.Verify(s => s.Create(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTimeOffset?>()), Times.Never);
+        _validatorMock.VerifyAll();
     }
 
     [Test]
@@ -117,6 +124,7 @@ public class AdminIndexPageTests
         _page.Input.Max = 1;
         _page.Input.ExpiresAt = null;
 
+        SetupValidatorSuccess(_page.Input, Times.Once());
         _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 1, null)).Returns(claims).Verifiable(Times.Once());
         _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask).Verifiable(Times.Once());
         _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Returns("mock-token").Verifiable(Times.Once());
@@ -131,6 +139,9 @@ public class AdminIndexPageTests
             Assert.That(_page.ModelState.IsValid, Is.True);
             Assert.That(_page.GeneratedUrl, Is.Not.Null);
         });
+        _validatorMock.VerifyAll();
+        _tokenServiceMock.VerifyAll();
+        _linkStoreMock.VerifyAll();
     }
 
     // ---------- OnPostAsync - Happy path (single-use) ----------
@@ -146,14 +157,16 @@ public class AdminIndexPageTests
         _page.Input.Max = 1;
         _page.Input.ExpiresAt = exp;
 
+        SetupValidatorSuccess(_page.Input, Times.Once());
         _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 1, exp)).Returns(claims).Verifiable(Times.Once());
         _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask).Verifiable(Times.Once());
-        _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Returns("mock-token");
+        _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Returns("mock-token").Verifiable(Times.Once());
 
         // Act
         var result = await _page.OnPostAsync();
 
         // Assert
+        _validatorMock.VerifyAll();
         _tokenServiceMock.VerifyAll();
         _linkStoreMock.VerifyAll();
         Assert.That(result, Is.InstanceOf<PageResult>());
@@ -170,7 +183,8 @@ public class AdminIndexPageTests
         _page.Input.Max = 2;
         _page.Input.ExpiresAt = exp;
 
-        _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 2, exp)).Returns(claims);
+        SetupValidatorSuccess(_page.Input, Times.Once());
+        _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 2, exp)).Returns(claims).Verifiable(Times.Once());
         _linkStoreMock.Setup(s => s.CreateAsync(It.Is<SecretLinkClaims>(c => c == claims)))
             .Returns(Task.CompletedTask)
             .Verifiable(Times.Once());
@@ -180,6 +194,7 @@ public class AdminIndexPageTests
         await _page.OnPostAsync();
 
         // Assert
+        _validatorMock.VerifyAll();
         _linkStoreMock.VerifyAll();
         _tokenServiceMock.VerifyAll();
     }
@@ -194,15 +209,18 @@ public class AdminIndexPageTests
         _page.Input.Max = 1;
         _page.Input.ExpiresAt = null;
 
-        _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 1, null)).Returns(claims);
-        _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask);
+        SetupValidatorSuccess(_page.Input, Times.Once());
+        _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 1, null)).Returns(claims).Verifiable(Times.Once());
+        _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask).Verifiable(Times.Once());
         _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Returns("mock-token").Verifiable(Times.Once());
 
         // Act
         await _page.OnPostAsync();
 
         // Assert
+        _validatorMock.VerifyAll();
         _tokenServiceMock.VerifyAll();
+        _linkStoreMock.VerifyAll();
     }
 
     // ---------- OnPostAsync - Happy path (multi-use) ----------
@@ -218,15 +236,18 @@ public class AdminIndexPageTests
         _page.Input.Max = 5;
         _page.Input.ExpiresAt = exp;
 
+        SetupValidatorSuccess(_page.Input, Times.Once());
         _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 5, exp)).Returns(claims).Verifiable(Times.Once());
-        _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask);
-        _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Returns("mock-token");
+        _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask).Verifiable(Times.Once());
+        _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Returns("mock-token").Verifiable(Times.Once());
 
         // Act
         await _page.OnPostAsync();
 
         // Assert
+        _validatorMock.VerifyAll();
         _tokenServiceMock.VerifyAll();
+        _linkStoreMock.VerifyAll();
     }
 
     // ---------- OnPostAsync - URL generation ----------
@@ -244,15 +265,19 @@ public class AdminIndexPageTests
         _page.HttpContext.Request.Scheme = "https";
         _page.HttpContext.Request.Host = new HostString("localhost", 5001);
 
-        _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 1, null)).Returns(claims);
-        _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask);
-        _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Returns("abc123token");
+        SetupValidatorSuccess(_page.Input, Times.Once());
+        _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 1, null)).Returns(claims).Verifiable(Times.Once());
+        _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask).Verifiable(Times.Once());
+        _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Returns("abc123token").Verifiable(Times.Once());
 
         // Act
         await _page.OnPostAsync();
 
         // Assert
         Assert.That(_page.GeneratedUrl, Is.EqualTo("https://localhost:5001/supersecret/abc123token"));
+        _validatorMock.VerifyAll();
+        _tokenServiceMock.VerifyAll();
+        _linkStoreMock.VerifyAll();
     }
 
     [Test]
@@ -264,15 +289,19 @@ public class AdminIndexPageTests
         _page.Input.Username = DefaultUsername;
         _page.Input.Max = 1;
 
-        _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 1, null)).Returns(claims);
-        _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask);
-        _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Returns("token");
+        SetupValidatorSuccess(_page.Input, Times.Once());
+        _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 1, null)).Returns(claims).Verifiable(Times.Once());
+        _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask).Verifiable(Times.Once());
+        _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Returns("token").Verifiable(Times.Once());
 
         // Act
         var result = await _page.OnPostAsync();
 
         // Assert
         Assert.That(result, Is.InstanceOf<PageResult>());
+        _validatorMock.VerifyAll();
+        _tokenServiceMock.VerifyAll();
+        _linkStoreMock.VerifyAll();
     }
 
     // ---------- OnPostAsync - Edge cases ----------
@@ -287,9 +316,10 @@ public class AdminIndexPageTests
         _page.Input.Username = username;
         _page.Input.Max = 1;
 
-        _tokenServiceMock.Setup(s => s.Create(username, 1, null)).Returns(claims);
-        _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask);
-        _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Returns("token");
+        SetupValidatorSuccess(_page.Input, Times.Once());
+        _tokenServiceMock.Setup(s => s.Create(username, 1, null)).Returns(claims).Verifiable(Times.Once());
+        _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask).Verifiable(Times.Once());
+        _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Returns("token").Verifiable(Times.Once());
 
         // Act
         var result = await _page.OnPostAsync();
@@ -300,6 +330,9 @@ public class AdminIndexPageTests
             Assert.That(result, Is.InstanceOf<PageResult>());
             Assert.That(_page.ModelState.IsValid, Is.True);
         });
+        _validatorMock.VerifyAll();
+        _tokenServiceMock.VerifyAll();
+        _linkStoreMock.VerifyAll();
     }
 
     [Test]
@@ -311,9 +344,10 @@ public class AdminIndexPageTests
         _page.Input.Username = DefaultUsername;
         _page.Input.Max = int.MaxValue;
 
-        _tokenServiceMock.Setup(s => s.Create(DefaultUsername, int.MaxValue, null)).Returns(claims);
-        _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask);
-        _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Returns("token");
+        SetupValidatorSuccess(_page.Input, Times.Once());
+        _tokenServiceMock.Setup(s => s.Create(DefaultUsername, int.MaxValue, null)).Returns(claims).Verifiable(Times.Once());
+        _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask).Verifiable(Times.Once());
+        _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Returns("token").Verifiable(Times.Once());
 
         // Act
         var result = await _page.OnPostAsync();
@@ -321,6 +355,9 @@ public class AdminIndexPageTests
         // Assert
         Assert.That(result, Is.InstanceOf<PageResult>());
         _tokenServiceMock.Verify(s => s.Create(DefaultUsername, int.MaxValue, null), Times.Once);
+        _validatorMock.VerifyAll();
+        _tokenServiceMock.VerifyAll();
+        _linkStoreMock.VerifyAll();
     }
 
     [Test]
@@ -347,11 +384,15 @@ public class AdminIndexPageTests
         _page.Input.Username = DefaultUsername;
         _page.Input.Max = 1;
 
+        SetupValidatorSuccess(_page.Input, Times.Once());
         _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 1, null))
-            .Throws(new InvalidOperationException("boom"));
+            .Throws(new InvalidOperationException("boom"))
+            .Verifiable(Times.Once());
 
         // Act + Assert
         Assert.ThrowsAsync<InvalidOperationException>(() => _page.OnPostAsync());
+        _validatorMock.VerifyAll();
+        _tokenServiceMock.VerifyAll();
     }
 
     [Test]
@@ -363,11 +404,15 @@ public class AdminIndexPageTests
         _page.Input.Username = DefaultUsername;
         _page.Input.Max = 1;
 
-        _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 1, null)).Returns(claims);
-        _linkStoreMock.Setup(s => s.CreateAsync(claims)).ThrowsAsync(new InvalidOperationException("boom"));
+        SetupValidatorSuccess(_page.Input, Times.Once());
+        _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 1, null)).Returns(claims).Verifiable(Times.Once());
+        _linkStoreMock.Setup(s => s.CreateAsync(claims)).ThrowsAsync(new InvalidOperationException("boom")).Verifiable(Times.Once());
 
         // Act + Assert
         Assert.ThrowsAsync<InvalidOperationException>(() => _page.OnPostAsync());
+        _validatorMock.VerifyAll();
+        _tokenServiceMock.VerifyAll();
+        _linkStoreMock.VerifyAll();
     }
 
     [Test]
@@ -379,17 +424,40 @@ public class AdminIndexPageTests
         _page.Input.Username = DefaultUsername;
         _page.Input.Max = 1;
 
-        _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 1, null)).Returns(claims);
-        _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask);
-        _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Throws(new InvalidOperationException("boom"));
+        SetupValidatorSuccess(_page.Input, Times.Once());
+        _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 1, null)).Returns(claims).Verifiable(Times.Once());
+        _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask).Verifiable(Times.Once());
+        _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Throws(new InvalidOperationException("boom")).Verifiable(Times.Once());
 
         // Act + Assert
         Assert.ThrowsAsync<InvalidOperationException>(() => _page.OnPostAsync());
+        _validatorMock.VerifyAll();
+        _tokenServiceMock.VerifyAll();
+        _linkStoreMock.VerifyAll();
     }
 
     // ---------- Helpers ----------
 
-    private static IndexModel CreatePage(ITokenService tokenService, ILinkStore linkStore)
+    private void SetupValidatorSuccess(CreateLinkViewModel input, Times times)
+    {
+        SetupValidator(input, new ValidationResult(), times);
+    }
+
+    private void SetupValidator(CreateLinkViewModel input, ValidationResult validationResult, Times times)
+    {
+        _validatorMock.Setup(v => v.ValidateAsync(
+            It.Is<CreateLinkRequest>(r =>
+                r.Username == input.Username &&
+                r.Max == input.Max &&
+                r.ExpiresAt == input.ExpiresAt),
+            It.IsAny<CancellationToken>()))
+            .ReturnsAsync(validationResult)
+            .Verifiable(times);
+    }
+
+    private static IndexModel CreatePage(ITokenService tokenService,
+                                         ILinkStore linkStore,
+                                         IValidator<CreateLinkRequest> validator)
     {
         var httpContext = new DefaultHttpContext();
         httpContext.Request.Scheme = "http";
@@ -399,11 +467,11 @@ public class AdminIndexPageTests
         var pageContext = new PageContext(actionContext)
         {
             ViewData = new Microsoft.AspNetCore.Mvc.ViewFeatures.ViewDataDictionary(
-                new Microsoft.AspNetCore.Mvc.ModelBinding.EmptyModelMetadataProvider(),
+                new EmptyModelMetadataProvider(),
                 new ModelStateDictionary())
         };
 
-        var page = new IndexModel(tokenService, linkStore)
+        var page = new IndexModel(tokenService, linkStore, validator)
         {
             PageContext = pageContext
         };
