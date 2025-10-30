@@ -1,54 +1,40 @@
 using System.Data;
 using Dapper;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using NUlid;
 using SuperSecret.Infrastructure;
 using SuperSecret.Models;
 using SuperSecret.Services;
+using SuperSecretTests.TestInfrastructure;
 
 namespace SuperSecretTests;
 
 [TestOf(nameof(SqlLinkStore))]
 [Category("Integration")]
-public class SqlLinkStoreIntegrationTests
+public class SqlLinkStoreIntegrationTests : DatabaseIntegrationTestBase
 {
     private const string DefaultUsername = "user";
 
-    private string _connectionString = null!;
-    private IDbConnectionFactory _connectionFactory = null!;
     private SqlLinkStore _store = null!;
 
     [OneTimeSetUp]
-    public async Task OneTimeSetUp()
+    public async Task OneTimeSetUp_DatabaseObjects()
     {
-        // Build config with normal precedence: JSON < env vars < "command line" (NUnit parameters)
-        var configuration = new ConfigurationBuilder()
-            .SetBasePath(TestContext.CurrentContext.TestDirectory)
-            .AddJsonFile("testsettings.json", optional: true)
-            .AddJsonFile($"testsettings.Development.json", optional: true)
-            .AddEnvironmentVariables()
-            .Build();
-
-
-        _connectionString = configuration.GetConnectionString("DefaultConnection") ?? throw new Exception("No connection string");
-
-        _connectionFactory = new SqlConnectionFactory(Options.Create(new DatabaseOptions
-        {
-            ConnectionString = _connectionString
-        }));
-
-        _store = new SqlLinkStore(_connectionFactory);
-
         await using var conn = await _connectionFactory.CreateOpenConnectionAsync();
 
-        await RequireTableExists(conn, "dbo", "SingleUseLinks");
-        await RequireTableExists(conn, "dbo", "MultiUseLinks");
-        await RequireProcExists(conn, "dbo", "CreateSingleUseLink");
-        await RequireProcExists(conn, "dbo", "CreateMultiUseLink");
-        await RequireProcExists(conn, "dbo", "ConsumeSingleUseLink");
-        await RequireProcExists(conn, "dbo", "ConsumeMultiUseLink");
+        await RequireTableExists(conn, DbObjects.Tables.SingleUseLinks);
+        await RequireTableExists(conn, DbObjects.Tables.MultiUseLinks);
+        await RequireProcExists(conn, DbObjects.Procs.CreateSingleUseLink);
+        await RequireProcExists(conn, DbObjects.Procs.CreateMultiUseLink);
+        await RequireProcExists(conn, DbObjects.Procs.ConsumeSingleUseLink);
+        await RequireProcExists(conn, DbObjects.Procs.ConsumeMultiUseLink);
+    }
+
+    [SetUp]
+    public void SetUp()
+    {
+        _store = new SqlLinkStore(_connectionFactory);
     }
 
     // ---------------- CreateAsync (Single-use) ----------------
@@ -75,8 +61,8 @@ public class SqlLinkStoreIntegrationTests
         // Assert
         Assert.Multiple(async () =>
         {
-            Assert.That(await CountAsync("SELECT COUNT(*) FROM dbo.SingleUseLinks WHERE Jti = @jti", jti), Is.EqualTo(1));
-            Assert.That(await CountAsync("SELECT COUNT(*) FROM dbo.MultiUseLinks WHERE Jti = @jti", jti), Is.EqualTo(0));
+            Assert.That(await CountSingleUseAsync(jti), Is.EqualTo(1));
+            Assert.That(await CountMultiUseAsync(jti), Is.EqualTo(0));
         });
 
         // Cleanup
@@ -102,7 +88,7 @@ public class SqlLinkStoreIntegrationTests
         {
             Assert.That(first, Is.True);
             Assert.That(second, Is.False);
-            Assert.That(await CountAsync("SELECT COUNT(*) FROM dbo.SingleUseLinks WHERE Jti = @jti", jti), Is.EqualTo(0));
+            Assert.That(await CountSingleUseAsync(jti), Is.EqualTo(0));
         });
     }
 
@@ -121,7 +107,7 @@ public class SqlLinkStoreIntegrationTests
         {
             // Assert
             Assert.That(consumed, Is.False);
-            Assert.That(await CountAsync("SELECT COUNT(*) FROM dbo.SingleUseLinks WHERE Jti = @jti", jti), Is.EqualTo(1));
+            Assert.That(await CountSingleUseAsync(jti), Is.EqualTo(1));
         });
 
         // Cleanup
@@ -154,7 +140,7 @@ public class SqlLinkStoreIntegrationTests
         await _store.CreateAsync(claims);
 
         // Assert
-        var clicksLeft = await QuerySingleOrDefaultAsync<int>("SELECT ClicksLeft FROM dbo.MultiUseLinks WHERE Jti = @jti", jti);
+        var clicksLeft = await GetMultiUseClicksLeftAsync(jti);
         Assert.That(clicksLeft, Is.EqualTo(3));
 
         // Cleanup
@@ -185,7 +171,7 @@ public class SqlLinkStoreIntegrationTests
             Assert.That(afterThird, Is.EqualTo(0));
             Assert.That(afterFourth, Is.Null);
         });
-        var remaining = await QuerySingleOrDefaultAsync<int?>("SELECT ClicksLeft FROM dbo.MultiUseLinks WHERE Jti = @jti", jti);
+        var remaining = await GetMultiUseClicksLeftAsync(jti);
         Assert.That(remaining, Is.Null); // row deleted
     }
 
@@ -202,7 +188,7 @@ public class SqlLinkStoreIntegrationTests
 
         // Assert
         Assert.That(afterAttempt, Is.Null);
-        var clicksLeft = await QuerySingleOrDefaultAsync<int?>("SELECT ClicksLeft FROM dbo.MultiUseLinks WHERE Jti = @jti", jti);
+        var clicksLeft = await GetMultiUseClicksLeftAsync(jti);
         Assert.That(clicksLeft, Is.EqualTo(2));
 
         // Cleanup
@@ -240,61 +226,7 @@ public class SqlLinkStoreIntegrationTests
         // Assert
         var successes = results.Count(r => r.HasValue);
         Assert.That(successes, Is.EqualTo(maxClicks));
-        var remaining = await QuerySingleOrDefaultAsync<int?>("SELECT ClicksLeft FROM dbo.MultiUseLinks WHERE Jti = @jti", jti);
+        var remaining = await GetMultiUseClicksLeftAsync(jti);
         Assert.That(remaining, Is.Null);
-    }
-
-    // ---------------- Helpers (Dapper) ----------------
-
-    private async Task<int> CountAsync(string sql, Ulid jti)
-    {
-        await using var conn = await _connectionFactory.CreateOpenConnectionAsync();
-        return await conn.QuerySingleAsync<int>(sql, new { jti = jti.ToByteArray() });
-    }
-
-    private async Task<T?> QuerySingleOrDefaultAsync<T>(string sql, Ulid jti)
-    {
-        await using var conn = await _connectionFactory.CreateOpenConnectionAsync();
-        return await conn.QuerySingleOrDefaultAsync<T>(sql, new { jti = jti.ToByteArray() });
-    }
-
-    private async Task DeleteByJtiAsync(Ulid jti)
-    {
-        const string cleanupSql = """
-            DELETE FROM dbo.SingleUseLinks WHERE Jti = @jti;
-            DELETE FROM dbo.MultiUseLinks WHERE Jti = @jti;
-            """;
-        await using var conn = await _connectionFactory.CreateOpenConnectionAsync();
-        await conn.ExecuteAsync(cleanupSql, new { jti = jti.ToByteArray() });
-    }
-
-    private static async Task RequireTableExists(SqlConnection conn, string schema, string name)
-    {
-        const string sql = """
-            SELECT CASE WHEN EXISTS (
-                SELECT 1
-                FROM sys.tables t
-                JOIN sys.schemas s ON s.schema_id = t.schema_id
-                WHERE s.name = @schema AND t.name = @name
-            ) THEN 1 ELSE 0 END
-            """;
-        var exists = await conn.QuerySingleAsync<int>(sql, new { schema, name }) == 1;
-        if (!exists)
-            Assert.Inconclusive($"Table {schema}.{name} not found. Deploy schema before running integration tests.");
-    }
-
-    private static async Task RequireProcExists(SqlConnection conn, string schema, string name)
-    {
-        const string sql = """
-            SELECT CASE WHEN EXISTS (
-                SELECT 1
-                FROM sys.procedures p
-                JOIN sys.schemas s ON s.schema_id = p.schema_id
-                WHERE s.name = @schema AND p.name = @name
-            ) THEN 1 ELSE 0 END
-            """;
-        var exists = await conn.QuerySingleAsync<int>(sql, new { schema, name }) == 1;
-        if (!exists)
-            Assert.Inconclusive($"Stored procedure {schema}.{name} not found. Deploy procedures before running integration tests.");
     }
 }

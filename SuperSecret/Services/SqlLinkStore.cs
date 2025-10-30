@@ -24,14 +24,14 @@ public class SqlLinkStore : ILinkStore
         if (maxClicks == 1)
         {
             await conn.ExecuteAsync(
-                "dbo.CreateSingleUseLink",
+                DbObjects.Procs.CreateSingleUseLink,
                 new { jti = jtiBytes, expiresAt = claims.Exp?.UtcDateTime },
                 commandType: System.Data.CommandType.StoredProcedure);
         }
         else
         {
             await conn.ExecuteAsync(
-                "dbo.CreateMultiUseLink",
+                DbObjects.Procs.CreateMultiUseLink,
                 new { jti = jtiBytes, clicksLeft = maxClicks, expiresAt = claims.Exp?.UtcDateTime },
                 commandType: System.Data.CommandType.StoredProcedure);
         }
@@ -41,10 +41,11 @@ public class SqlLinkStore : ILinkStore
     {
         await using var conn = await _connectionFactory.CreateOpenConnectionAsync();
 
-        var rowsAffected = 
-            await conn.QuerySingleAsync<int>("dbo.ConsumeSingleUseLink",
-                                             new { jti = jti.ToByteArray() },
-                                             commandType: System.Data.CommandType.StoredProcedure);
+        var rowsAffected =
+            await conn.QuerySingleAsync<int>(
+                DbObjects.Procs.ConsumeSingleUseLink,
+                new { jti = jti.ToByteArray() },
+                commandType: System.Data.CommandType.StoredProcedure);
 
         return rowsAffected > 0;
     }
@@ -54,7 +55,7 @@ public class SqlLinkStore : ILinkStore
         await using var conn = await _connectionFactory.CreateOpenConnectionAsync();
 
         var result = await conn.QuerySingleOrDefaultAsync<int?>(
-            "dbo.ConsumeMultiUseLink",
+            DbObjects.Procs.ConsumeMultiUseLink,
             new { jti = jti.ToByteArray() },
             commandType: System.Data.CommandType.StoredProcedure);
 

@@ -18,6 +18,8 @@ builder.Services.Configure<DatabaseOptions>(o =>
     o.ConnectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 });
 
+builder.Services.Configure<CleanupOptions>(builder.Configuration.GetSection(nameof(CleanupOptions)));
+
 // Infrastructure
 builder.Services.AddSingleton<IDbConnectionFactory, SqlConnectionFactory>();
 
@@ -27,6 +29,10 @@ builder.Services.AddOpenApi();
 builder.Services.AddSingleton<ITokenService, TokenService>();
 builder.Services.AddSingleton<ILinkStore, SqlLinkStore>();
 builder.Services.AddSingleton<IValidator<CreateLinkRequest>, CreateLinkValidator>();
+builder.Services.AddSingleton<ILinkCleanupService, LinkCleanupService>();
+
+// Background Services
+builder.Services.AddHostedService<ExpiredLinkCleanupService>();
 
 var app = builder.Build();
 
