@@ -3,6 +3,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.Playwright;
 using Microsoft.Playwright.NUnit;
 using SuperSecret.Pages.Admin;
+using SuperSecret.Validators;
 using SuperSecretTests.TestInfrastructure;
 using System.Diagnostics;
 using System.Net;
@@ -157,33 +158,67 @@ public partial class AdminIndexPagePlaywrightTests : PageTest
 
         await Page.GotoAsync(secretUrl);
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "There are no secrets here" })).ToBeVisibleAsync();
-
-
-
-        await Page.GetByRole(AriaRole.Heading, new() { Name = "You have found the secret," }).ClickAsync();
-        await Page.GetByRole(AriaRole.Heading, new() { Name = "You have found the secret," }).ClickAsync();
-        await Expect(Page.GetByRole(AriaRole.Heading)).ToContainTextAsync("You have found the secret, hello!");
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "You have found the secret," })).ToBeVisibleAsync();
-        await Page.GotoAsync("http://localhost:5276/Admin");
-        await Page.GetByRole(AriaRole.Button, new() { Name = "Generate Link" }).ClickAsync();
-        await Page.Locator("#generatedUrl").ClickAsync();
-        await Page.Locator("#generatedUrl").ClickAsync();
-        await Page.GetByRole(AriaRole.Button, new() { Name = "Copy" }).ClickAsync();
-        await Expect(Page.Locator("#generatedUrl")).ToBeVisibleAsync();
-        await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "Copy" })).ToBeVisibleAsync();
-        await Expect(Page.Locator("#generatedUrl")).ToBeVisibleAsync();
-        await Page.Locator("#generatedUrl").ClickAsync();
-        await Page.Locator("#generatedUrl").ClickAsync();
-        await Page.Locator("#generatedUrl").ClickAsync();
-        await Page.Locator("#generatedUrl").ClickAsync(new LocatorClickOptions
-        {
-            Button = MouseButton.Right,
-        });
-
     }
 
     [GeneratedRegex("/supersecret/")]
     private static partial Regex SuperSecretRegex();
+
+
+    private static IEnumerable<TestCaseData> InvalidRequestTestCases()
+    {
+        yield return new TestCaseData("", 0, -10,
+            ValidationMessages.UsernameRequired, 
+            ValidationMessages.MaxClicksMinimum, 
+            ValidationMessages.ExpiryDateFuture);
+        yield return new TestCaseData(" ", -1, 0,
+            ValidationMessages.UsernameLengthAlphanumeric, 
+            ValidationMessages.MaxClicksMinimum, 
+            ValidationMessages.ExpiryDateFuture);
+        yield return new TestCaseData("nice@username", 2, null,
+            ValidationMessages.UsernameAlphanumeric, 
+            null, 
+            null);
+        yield return new TestCaseData("with space", 2, null,
+            ValidationMessages.UsernameAlphanumeric, 
+            null, 
+            null);
+        yield return new TestCaseData(new string('c', 51), 2, null,
+            ValidationMessages.UsernameLength, 
+            null, 
+            null);
+    }
+
+    [TestCaseSource(nameof(InvalidRequestTestCases))]
+
+    public async Task UI_ShowsValidationErrors_ForInvalidRequests(string username,
+                                                                  int maxClicks,
+                                                                  int? expiresInMinutes,
+                                                                  string? usernameValidationMessage,
+                                                                  string? maxClicksValidationMessage,
+                                                                  string? expiryDateValidationMessage)
+    {
+        var expiryDate = expiresInMinutes.HasValue
+            ? DateTimeOffset.UtcNow.AddMinutes(expiresInMinutes.Value)
+            : (DateTimeOffset?)null;
+        await FillFormAsync(username, maxClicks, expiryDate);
+        await SubmitFormAsync();
+
+        var linkBox = Page.Locator("#generatedUrl");
+        await Expect(linkBox).Not.ToBeVisibleAsync();
+
+        var copyButton = Page.GetByRole(AriaRole.Button, new() { Name = "Copy" });
+        await Expect(copyButton).Not.ToBeVisibleAsync();
+
+        foreach (var validationMessage in (string?[])[usernameValidationMessage,
+                                                      maxClicksValidationMessage, 
+                                                      expiryDateValidationMessage])
+        {
+            if (validationMessage != null)
+            {
+                await Expect(Page.GetByText(validationMessage)).ToBeVisibleAsync();
+            }
+        }
+    }
 
     //private static IEnumerable<TestCaseData> SingleUseCases()
     //{

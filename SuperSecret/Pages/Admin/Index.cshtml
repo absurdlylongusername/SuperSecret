@@ -17,13 +17,20 @@
 
         <div class="mb-3">
           <label asp-for="@Model.Input.Max" class="form-label"></label>
-          <input asp-for="@Model.Input.Max" type="number" class="form-control bg-dark text-light border-secondary" />
+          <input asp-for="@Model.Input.Max"
+                          type="number"
+                          min="1"
+                          step="1"
+                          class="form-control bg-dark text-light border-secondary" />
           <span asp-validation-for="@Model.Input.Max" class="text-danger small"></span>
         </div>
 
         <div class="mb-3">
+          @* @{ var now = DateTimeOffset.Now.ToString("yyyy-MM-ddTHH:mm"); } *@
           <label asp-for="@Model.Input.ExpiresAt" class="form-label"></label>
-          <input asp-for="@Model.Input.ExpiresAt" type="datetime-local" class="form-control bg-dark text-light border-secondary" />
+          <input asp-for="@Model.Input.ExpiresAt" type="datetime-local" 
+                          min="@DateTimeOffset.UtcNow:yyyy-MM-ddTHH:mm"
+                          class="form-control bg-dark text-light border-secondary" />
           <span asp-validation-for="@Model.Input.ExpiresAt" class="text-danger small"></span>
         </div>
 
