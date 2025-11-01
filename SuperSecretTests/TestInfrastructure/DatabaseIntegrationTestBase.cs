@@ -1,12 +1,10 @@
 using Dapper;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using NUlid;
 using SuperSecret.Infrastructure;
-using SuperSecret.Validators;
 using System.Data;
 
 namespace SuperSecretTests.TestInfrastructure;

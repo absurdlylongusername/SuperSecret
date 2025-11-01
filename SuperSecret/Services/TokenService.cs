@@ -19,7 +19,7 @@ public class TokenService : ITokenService
     {
         var key = options.Value.TokenSigningKey;
         if (string.IsNullOrWhiteSpace(key))
-            throw new InvalidOperationException("TokenOptions.SigningKey is not configured.");
+            throw new InvalidOperationException($"{nameof(TokenOptions.TokenSigningKey)} is not configured.");
 
         _signingKeyBytes = Encoding.UTF8.GetBytes(key);
     }

@@ -1,5 +1,3 @@
-using System.Data;
-using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Moq;
 using NUlid;

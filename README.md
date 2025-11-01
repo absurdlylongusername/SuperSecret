@@ -1,184 +1,130 @@
-# SuperSecret - Secret Link Generator
+# SuperSecret Token Service
 
-A small ASP.NET Core application for generating unique, time-limited secret links.
+Bonjour! This is my submission for the technical test for KYC360.
 
-## Features
+## The Task
 
-- Generate unique links that display personalized secret messages
-- Support for single-use and multi-use links
-- Optional expiry dates for links
-- Admin UI and REST API for link generation
-- SQL Server storage with Dapper
-- HMAC-signed JWT tokens for security
+Design an application that generates secret links. When a user clicks the link, it will display a secret message for that user (`You have found the secret, {username}!`), but subsequent clicks will show a message saying the link is not available (`There are no secrets here`)
 
-## Prerequisites
+Extra functionality: 
+- Links can be clicked X number of times before expiring
+- Links can expire after a period of time
 
-- .NET 9 SDK
-- Docker Desktop (for SQL Server)
-- SQL Server (or use Docker Compose)
 
-## Getting Started
+Links can be created by an admin page where they can enter the username for the message, as well as number of clicks and expiry date.
 
-### 1. Start SQL Server (using Docker)
+Links can also be created by an API endpoint that communicates using JSON.
 
-```bash
-docker-compose up -d
-```
+For all link creation methods, the username is required, but other parameters are optional.
 
-Wait for SQL Server to be healthy (about 30 seconds).
+# My Solution
 
-### 2. Create Database Schema
+My solution is a Razor Pages application with a minimal API.
 
-Connect to SQL Server and run the `DatabaseSchema.sql` script:
+It has an Admin page (`/Admin`) for generating links where you can enter a username, max clicks, and the link's Time To Live (TTL) in seconds, minutes, hours and/or days.
 
-```bash
-# Using sqlcmd (Windows)
-sqlcmd -S localhost,1433 -U sa -P "YourStrong@Passw0rd" -i SuperSecret/DatabaseSchema.sql
+It exposes an API endpoint for link generation (`/api/links`) that has the same parameters as the admin page, but the expiry date is specified as a DateTime instead of separate parameters for seconds, minutes, etc.
 
-# Using Azure Data Studio or SQL Server Management Studio
-# Open DatabaseSchema.sql and execute it
-```
+Generated links are in the form of `{domain}/supersecret/{token}`.
 
-### 3. Configure Application Secrets (Recommended for Development)
+Each token is a JWT-like token that is cryptographically signed and contains all relevant information about the link (username, expiry, max clicks, etc.)
 
-Instead of using `appsettings.json`, use user secrets:
+It uses a SQL Server database for storing token information to keep track of existing tokens and expiry.
 
-```bash
-cd SuperSecret
-dotnet user-secrets set "TokenSigningKey" "your-very-secret-key-that-is-at-least-32-characters-long"
-dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=localhost,1433;Database=SuperSecretDb;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=True;"
-```
 
-### 4. Run the Application
+## Token Generation and Validation
 
-```bash
-cd SuperSecret
-dotnet run
-```
+Tokens stored as much relevant data as possible within themselves so it doesn't need to be stored in a database.
 
-The application will be available at:
-- HTTPS: https://localhost:7xxx
-- HTTP: http://localhost:5xxx
+- **Token Claims Structure**:
 
-## Usage
+    - `sub`: username
+    - `jti`: unique token id (ULID)
+    - `exp`: expiry
+    - `max`: max allowed clicks
+    - `ver`: token schema version
 
-### Admin UI
+Plain token data is stored in this format, and is signed and converted into a JSON token.
 
-Navigate to `/admin` to create links via the web interface:
-- Enter a username (1-50 alphanumeric characters)
-- Specify max clicks (default: 1 for single-use)
-- Optionally set an expiry date
-- Click "Generate Link" to create the secret link
+Tokens are in this form: `base64url(header) . base64url(payload) . base64url(HMAC_SHA256(header.payload, secretKey))`
 
-### API
-
-Create links programmatically:
-
-```bash
-POST /api/links
-Content-Type: application/json
-
-{
-  "username": "John",
-"max": 3,
-  "expiresAt": "2024-12-31T23:59:59Z"
+Where `header` is of the form 
+````json
+{ 
+  "alg": "HS256",
+  "typ": "JWT"
 }
-```
+````
 
-Response:
-```json
-{
-  "url": "https://localhost:7xxx/supersecret/{token}"
-}
-```
+And `payload` is just the JSON of the claims stated above.
 
-### Accessing Secret Links
+Tokens are signed with a secret using the HMAC SHA256 algorithm. This signing is used for validation to ensure tokens are not tampered with.
 
-Visit the generated link: `/supersecret/{token}`
+Every token has a unique ID `jti`, which is a ULID.
 
-- **First valid visit**: "You have found the secret, {username}!"
-- **Subsequent/invalid visits**: "There are no secrets here"
+Tokens have a maximum TTL of 30 days.
 
-## Architecture
 
-### Token Format
+## Database
 
-Tokens use HMAC-SHA256 signed JWT format:
-- `sub`: Username
-- `jti`: Unique ID (ULID-style)
-- `max`: Maximum clicks allowed
-- `exp`: Expiry timestamp (optional)
-- `ver`: Token version
+A SQL Server database is used to store information on existing tokens.
 
-### Database Schema
+When a token is created from a request, it is stored in the database. 
 
-**SingleUseLinks**: Presence-only table for single-use links
-- Deletes row on first valid access
-- Fast lookups with primary key
+There's two types of tokens: single use and multi use, each of which are stored in different tables.
 
-**MultiUseLinks**: Countdown table for multi-use links
-- Decrements `ClicksLeft` on each access
-- Deletes when clicks reach zero
+Single use tokens store only the token ID and the expiry date; multi use store the same but also the remaining clicks on the link/token.
+I considered using a single table for both types, but having a separate single use table makes extraction of single use tokens simpler (they can be deleted on access without checking remaining clicks, whereas a single table for both means checking remaining clicks for single use tokens).
 
-### Security
+Token IDs are stored as 16 binary bytes instead of CHAR(26), for maximum storage efficiency.
 
-- Constant-time HMAC comparison prevents timing attacks
-- Tokens are signed and validated on every request
-- No-store cache headers prevent browser caching
-- SQL injection protected by parameterized queries (Dapper)
+A background service runs periodically to delete expired tokens in both tables.
 
-## Configuration
+## Storage and Speed Performance Considerations
 
-### appsettings.json
+The brief states expected usage is 1M+ links a month, which calculates to <1 link per second. This is extremely low throughput, so speed is not really a concern based on the brief.
 
-```json
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Server=localhost,1433;Database=SuperSecretDb;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=True;"
-  },
-  "TokenSigningKey": "your-secret-key-min-32-chars-long"
-}
-```
+The main concern is storage. 1M links a month, assuming a generous maximum of 200B of storage per link, the storage upper bound would never exceed 200 MiB if we have a max link TTL of 30 days.
 
-### Environment Variables
+## Tests
 
-- `ConnectionStrings__DefaultConnection`: Database connection string
-- `TokenSigningKey`: HMAC signing key (min 32 characters)
+I initially developed this by just writing the functionality, but switched to using a TDD approach midway due to the fact I encountered a bug that could be captured and reproduced within a test, and it occurred to me that it would make sense to specify my desired functionality in the form of tests and fix bugs that way, rather than doing it manually.
 
-## Database Maintenance
+This helped me avoid the situation of writing a bunch of code, running it, finding out it doesn't work, and spending ages fixing an obscure bug: a scenario which I've experienced many a time. Since the general API and interface of the program had already been specified, I was able to write tests first and then focus on refining implementation afterwards.
 
-### Purge Expired Links
+As a result, almost all of the code is unit and integration tested
 
-Run periodically (e.g., daily via scheduled job):
+# How to run it
 
-```sql
-DELETE FROM dbo.SingleUseLinks WHERE ExpiresAt IS NOT NULL AND ExpiresAt <= SYSUTCDATETIME();
-DELETE FROM dbo.MultiUseLinks WHERE ExpiresAt IS NOT NULL AND ExpiresAt <= SYSUTCDATETIME();
-```
+**Prerequisites**
 
-## Project Structure
+- .NET 9
+- Visual Studio 2022
+  - Ensure the standard ASP.NET components are installed (in VS -> Tools -> Get Tools and Features)
+  - Ensure "Data storage and processing" toolset is installed
+- SQL Server 2022
 
-```
-SuperSecret/
-??? Models/
-?   ??? ApiModels.cs     # API request/response models
-?   ??? SecretLinkClaims.cs   # Token claims model
-??? Services/
-?   ??? ITokenService.cs      # Token service interface
-?   ??? TokenService.cs     # HMAC JWT token implementation
-?   ??? ILinkStore.cs      # Data store interface
-?   ??? SqlLinkStore.cs       # Dapper SQL implementation
-??? Pages/
-?   ??? Admin/
-?   ?   ??? Index.cshtml# Admin UI
-?   ?   ??? Index.cshtml.cs
-?   ??? SuperSecret.cshtml    # Secret reveal page
-?   ??? SuperSecret.cshtml.cs
-??? DatabaseSchema.sql        # SQL Server schema
-??? docker-compose.yml # SQL Server Docker setup
-??? Program.cs     # Application entry point
-```
 
-## License
+After cloning the repository, open the solution Visual Studio and publish the SQL project to your SQL database
 
-MIT
+- Right click SuperSecretDatabase in Solution Explorer -> Publish
+- Click Edit..
+- Select a DB connection, or if none appear go to the Browse tab and select one there
+- Enter database name (This database name must matc the database in your connection string in appsettings.json)
+
+This will create the database schema for the application in your SQL Server database connection.
+
+Update the connection string in `appsettings.json` (or `appsettings.Development.json`, or set it in user secrets) to point to the newly created database.
+Set a Token Signing key in the appsettings or in user secrets.
+
+
+After that you can run the app. 
+
+
+## Running the tests
+
+Before running tests you must set the connection string in `testsettings.json`.
+
+Ideally, this will point to a different database than the one in appsettings.json (you can create a new one by following the publish steps above but giving a different database name).
+
+For the Playwright tests you will also need to set the `BaseUrl` to point to an already running instance of the application.

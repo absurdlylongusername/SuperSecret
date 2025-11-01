@@ -1,14 +1,11 @@
 using Dapper;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using NUlid;
 using SuperSecret.Infrastructure;
 using SuperSecret.Models;
 using SuperSecret.Services;
-using SuperSecret.Validators;
 using SuperSecretTests.TestInfrastructure;
 using System.Net;
 using System.Net.Http.Json;
