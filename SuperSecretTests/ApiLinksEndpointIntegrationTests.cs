@@ -9,6 +9,7 @@ using SuperSecret.Infrastructure;
 using SuperSecret.Models;
 using SuperSecret.Services;
 using SuperSecret.Validators;
+using SuperSecretTests.TestInfrastructure;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
@@ -18,41 +19,22 @@ namespace SuperSecretTests;
 
 [TestOf(typeof(Program))]
 [Category("Integration")]
-public class ApiLinksEndpointIntegrationTests
+public class ApiLinksEndpointIntegrationTests : DatabaseIntegrationTestBase
 {
     private const string DefaultUsername = "user";
     private const string ApiEndpoint = "/api/links";
 
     private WebApplicationFactory<Program> _factory = null!;
     private HttpClient _client = null!;
-    private string _connectionString = null!;
-    private IDbConnectionFactory _connectionFactory = null!;
 
     private ITokenService TokenService => _factory.Services.GetRequiredService<ITokenService>();
 
     [OneTimeSetUp]
     public async Task OneTimeSetUp()
     {
-        // Build config
-        var configuration = new ConfigurationBuilder()
-            .SetBasePath(TestContext.CurrentContext.TestDirectory)
-            .AddJsonFile("testsettings.json", optional: true)
-            .AddJsonFile($"testsettings.Development.json", optional: true)
-            .AddEnvironmentVariables()
-            .Build();
-
-        _connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? throw new Exception("No connection string");
-
-        _connectionFactory = new SqlConnectionFactory(Options.Create(new DatabaseOptions
-        {
-            ConnectionString = _connectionString
-        }));
-
-        // Verify database schema exists
         await using var conn = await _connectionFactory.CreateOpenConnectionAsync();
-        await RequireTableExists(conn, "dbo", "SingleUseLinks");
-        await RequireTableExists(conn, "dbo", "MultiUseLinks");
+        await RequireTableExists(conn, DbObjects.Tables.SingleUseLinks);
+        await RequireTableExists(conn, DbObjects.Tables.MultiUseLinks);
 
         _factory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
@@ -61,7 +43,7 @@ public class ApiLinksEndpointIntegrationTests
                 {
                     config.AddInMemoryCollection(new Dictionary<string, string?>
                     {
-                        ["ConnectionStrings:DefaultConnection"] = _connectionString,
+                        ["ConnectionStrings:DefaultConnection"] = ConnectionString,
                         ["TokenSigningKey"] = "test-key-that-is-at-least-32-characters-long-for-hmac"
                     });
                 });
@@ -89,13 +71,13 @@ public class ApiLinksEndpointIntegrationTests
     // ---------- Happy Path - Single-use ----------
 
 
-    private static IEnumerable<TestCaseData> PostLinks_CreatesValidSingleUseLink_WithValidRequests_TestCases()
+    private static IEnumerable<TestCaseData> ValidExpiryDateTestCases()
     {
         yield return new TestCaseData((DateTimeOffset?)null);
         yield return new TestCaseData(DateTimeOffset.UtcNow.AddMinutes(10));
     }
 
-    [TestCaseSource(nameof(PostLinks_CreatesValidSingleUseLink_WithValidRequests_TestCases))]
+    [TestCaseSource(nameof(ValidExpiryDateTestCases))]
     public async Task PostLinks_CreatesValidSingleUseLink_WithValidRequests(DateTimeOffset? expiryDate)
     {
         // Arrange
@@ -147,13 +129,8 @@ public class ApiLinksEndpointIntegrationTests
 
     // ---------- Happy Path - Multi-use ----------
 
-    private static IEnumerable<TestCaseData> PostLinks_CreatesValidMultiUseLink_WithValidRequests_TestCases()
-    {
-        yield return new TestCaseData((DateTimeOffset?)null);
-        yield return new TestCaseData(DateTimeOffset.UtcNow.AddMinutes(10));
-    }
 
-    [TestCaseSource(nameof(PostLinks_CreatesValidMultiUseLink_WithValidRequests_TestCases))]
+    [TestCaseSource(nameof(ValidExpiryDateTestCases))]
     public async Task PostLinks_CreatesValidMultiUseLink_WithValidRequests(DateTimeOffset? expiryDate)
     {
         // Arrange
@@ -244,17 +221,8 @@ public class ApiLinksEndpointIntegrationTests
 
     // ---------- Request Validation - Username ----------
     
-    // TODO: DRY from ApiLinksEndpointTests
-    private static IEnumerable<TestCaseData> InvalidUsernameTestCases()
-    {
-        yield return new TestCaseData("", ValidationMessages.UsernameRequired);
-        yield return new TestCaseData("    ", ValidationMessages.UsernameRequired);
-        yield return new TestCaseData(new string('a', 51), ValidationMessages.UsernameLength);
-        yield return new TestCaseData("user@test", ValidationMessages.UsernameAlphanumeric);
-        yield return new TestCaseData("user test", ValidationMessages.UsernameAlphanumeric);
-    }
 
-    [TestCaseSource(nameof(InvalidUsernameTestCases))]
+    [TestCaseSource(typeof(TestCases), nameof(TestCases.InvalidUsernameTestCases))]
     public async Task PostLinks_ReturnsBadRequest_WhenInvalidUsername(string username, string expectedMessage)
     {
         // Arrange
@@ -691,22 +659,6 @@ public class ApiLinksEndpointIntegrationTests
     }
 
     // ---------- Helpers ----------
-
-    private static async Task RequireTableExists(SqlConnection conn, string schema, string name)
-    {
-        const string sql = """
-            SELECT CASE WHEN EXISTS (
-                SELECT 1
-                FROM sys.tables t
-                JOIN sys.schemas s ON s.schema_id = t.schema_id
-                WHERE s.name = @schema AND t.name = @name
-            ) THEN 1 ELSE 0 END
-            """;
-        var exists = await conn.QuerySingleAsync<int>(sql, new { schema, name }) == 1;
-        if (!exists)
-            Assert.Inconclusive($"Table {schema}.{name} not found. Deploy schema before running integration tests.");
-    }
-
     private async Task CleanupLinkFromUrl(string url)
     {
         var jti = ExtractJtiFromUrl(url);

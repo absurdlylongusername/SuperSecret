@@ -1,5 +1,6 @@
 {
-  "ConnectionStrings": {
-    "DefaultConnection": "Data Source=DAVE23\\SQLSERVER;Initial Catalog=SuperSecretDb;Integrated Security=True;Trust Server Certificate=True"
+  "IntegrationTestOptions": {
+    "BaseUrl": "https://localhost:5276",
+    "ConnectionString": "Data Source=DAVE23\\SQLSERVER;Initial Catalog=SuperSecretDb;Integrated Security=True;Trust Server Certificate=True";
   }
 }

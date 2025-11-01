@@ -10,30 +10,30 @@ GO
 USE SuperSecretDb;
 GO
 
--- Single-use links table (presence-only)
-IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'SingleUseLinks' AND schema_id = SCHEMA_ID('dbo'))
+IF OBJECT_ID(N'dbo.SingleUseLinks', N'U') IS NULL
 BEGIN
-    CREATE TABLE dbo.SingleUseLinks (
-        Jti       BINARY(16)  NOT NULL PRIMARY KEY
-      CreatedAt DATETIME2   NOT NULL DEFAULT SYSUTCDATETIME(),
-    ExpiresAt DATETIME2   NULL
+    CREATE TABLE dbo.SingleUseLinks
+    (
+        Jti       BINARY(16)  NOT NULL PRIMARY KEY,
+        CreatedAt DATETIME2   NOT NULL DEFAULT SYSUTCDATETIME(),
+        ExpiresAt DATETIME2   NULL
     );
-    
+
     CREATE INDEX IX_SingleUse_Expires ON dbo.SingleUseLinks (ExpiresAt);
 END
 GO
 
--- Multi-use links table (countdown only)
-IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'MultiUseLinks' AND schema_id = SCHEMA_ID('dbo'))
+IF OBJECT_ID(N'dbo.MultiUseLinks', N'U') IS NULL
 BEGIN
-    CREATE TABLE dbo.MultiUseLinks (
-        Jti         BINARY(16) NOT NULL PRIMARY KEY
- ClicksLeft  INT        NOT NULL,
+    CREATE TABLE dbo.MultiUseLinks
+    (
+        Jti         BINARY(16) NOT NULL PRIMARY KEY,
+        ClicksLeft  INT        NOT NULL,
         CreatedAt   DATETIME2  NOT NULL DEFAULT SYSUTCDATETIME(),
         ExpiresAt   DATETIME2  NULL,
         CONSTRAINT CK_ClicksLeft_Positive CHECK (ClicksLeft >= 0)
     );
-    
+
     CREATE INDEX IX_MultiUse_Expires ON dbo.MultiUseLinks (ExpiresAt);
 END
 GO

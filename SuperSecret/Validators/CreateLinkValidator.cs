@@ -4,16 +4,14 @@ using SuperSecret.Models;
 
 namespace SuperSecret.Validators;
 
-public class CreateLinkValidator : AbstractValidator<CreateLinkRequest>
+public partial class CreateLinkValidator : AbstractValidator<CreateLinkRequest>
 {
-    private static readonly Regex UsernameRegex = new("^[A-Za-z0-9]+$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
     public CreateLinkValidator()
     {
         RuleFor(x => x.Username)
             .NotEmpty().WithMessage(ValidationMessages.UsernameRequired)
             .Length(1, 50).WithMessage(ValidationMessages.UsernameLength)
-            .Matches(UsernameRegex).WithMessage(ValidationMessages.UsernameAlphanumeric);
+            .Matches(UsernameRegex()).WithMessage(ValidationMessages.UsernameAlphanumeric);
 
         RuleFor(x => x.Max)
             .GreaterThanOrEqualTo(1).WithMessage(ValidationMessages.MaxClicksMinimum);
@@ -23,4 +21,7 @@ public class CreateLinkValidator : AbstractValidator<CreateLinkRequest>
             .When(x => x.ExpiresAt.HasValue)
             .WithMessage(ValidationMessages.ExpiryDateFuture);
     }
+
+    [GeneratedRegex("^[A-Za-z0-9]+$", RegexOptions.Compiled | RegexOptions.CultureInvariant)]
+    private static partial Regex UsernameRegex();
 }

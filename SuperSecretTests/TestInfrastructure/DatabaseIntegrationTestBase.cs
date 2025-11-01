@@ -1,11 +1,12 @@
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using NUlid;
 using SuperSecret.Infrastructure;
+using SuperSecret.Validators;
 using System.Data;
 
 namespace SuperSecretTests.TestInfrastructure;
@@ -13,23 +14,14 @@ namespace SuperSecretTests.TestInfrastructure;
 public abstract class DatabaseIntegrationTestBase
 {
     protected IDbConnectionFactory _connectionFactory = null!;
+    protected string ConnectionString { get; } = TestConfiguration.Options.ConnectionString;
 
     [OneTimeSetUp]
     public async Task BaseOneTimeSetUp()
     {
-        var configuration = new ConfigurationBuilder()
-            .SetBasePath(TestContext.CurrentContext.TestDirectory)
-            .AddJsonFile("testsettings.json", optional: true)
-            .AddJsonFile("testsettings.Development.json", optional: true)
-            .AddEnvironmentVariables()
-            .Build();
-
-        var connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? throw new Exception("No connection string");
-
         _connectionFactory = new SqlConnectionFactory(Options.Create(new DatabaseOptions
         {
-            ConnectionString = connectionString
+            ConnectionString = ConnectionString
         }));
 
         // Validate connectivity once

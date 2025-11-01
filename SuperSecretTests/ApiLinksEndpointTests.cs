@@ -1,5 +1,3 @@
-using System.Net;
-using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
@@ -7,6 +5,11 @@ using NUlid;
 using SuperSecret.Models;
 using SuperSecret.Services;
 using SuperSecret.Validators;
+using SuperSecretTests.TestInfrastructure;
+using System;
+using System.Net;
+using System.Net.Http.Json;
+using System.Threading.Tasks;
 
 namespace SuperSecretTests;
 
@@ -64,20 +67,12 @@ public class ApiLinksEndpointTests
         _linkStoreMock.Reset();
     }
 
-    
+
 
     // ---------- Request validation - Username ----------
 
-    private static IEnumerable<TestCaseData> InvalidUsernameTestCases()
-    {
-        yield return new TestCaseData("", ValidationMessages.UsernameRequired);
-        yield return new TestCaseData("    ", ValidationMessages.UsernameRequired);
-        yield return new TestCaseData(new string('a', 51), ValidationMessages.UsernameLength);
-        yield return new TestCaseData("user@test", ValidationMessages.UsernameAlphanumeric);
-        yield return new TestCaseData("user test", ValidationMessages.UsernameAlphanumeric);
-    }
 
-    [TestCaseSource(nameof(InvalidUsernameTestCases))]
+    [TestCaseSource(typeof(TestCases), nameof(TestCases.InvalidUsernameTestCases))]
     public async Task PostLinks_ReturnsBadRequest_WhenInvalidUserName(string userName, string expectedErrorMessage)
     {
         // Arrange

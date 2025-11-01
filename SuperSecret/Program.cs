@@ -1,9 +1,10 @@
+using System.Text.RegularExpressions;
 using FluentValidation;
+using Microsoft.Extensions.Options;
 using SuperSecret.Infrastructure;
 using SuperSecret.Models;
 using SuperSecret.Services;
 using SuperSecret.Validators;
-using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,21 +19,14 @@ builder.Services.Configure<DatabaseOptions>(o =>
     o.ConnectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 });
 
-builder.Services.Configure<CleanupOptions>(builder.Configuration.GetSection(nameof(CleanupOptions)));
-
 // Infrastructure
 builder.Services.AddSingleton<IDbConnectionFactory, SqlConnectionFactory>();
 
 // Services
 builder.Services.AddRazorPages();
-builder.Services.AddOpenApi();
 builder.Services.AddSingleton<ITokenService, TokenService>();
-builder.Services.AddSingleton<ILinkStore, SqlLinkStore>();
-builder.Services.AddSingleton<IValidator<CreateLinkRequest>, CreateLinkValidator>();
-builder.Services.AddSingleton<ILinkCleanupService, LinkCleanupService>();
-
-// Background Services
-builder.Services.AddHostedService<ExpiredLinkCleanupService>();
+builder.Services.AddScoped<ILinkStore, SqlLinkStore>();
+builder.Services.AddScoped<IValidator<CreateLinkRequest>, CreateLinkValidator>();
 
 var app = builder.Build();
 
@@ -74,9 +68,6 @@ api.MapPost("/links", async (CreateLinkRequest request,
     return Results.Ok(new CreateLinkResponse(url));
 });
 
-app.MapOpenApi();
-app.MapScalarApiReference();
-
 // Redirect root to admin
 app.MapGet("/", () => Results.Redirect("/Admin"));
 
@@ -85,4 +76,5 @@ app.Run();
 
 
 public partial class Program
-{ }
+{
+}

@@ -31,9 +31,10 @@ public class IndexModel(ITokenService tokenService,
 
         if (!validationResult.IsValid)
         {
+            // IMPORTANT: prefix property name with "Input." so Razor binds errors to the correct fields
             foreach (var error in validationResult.Errors)
             {
-                ModelState.AddModelError(error.PropertyName, error.ErrorMessage);
+                ModelState.AddModelError($"Input.{error.PropertyName}", error.ErrorMessage);
             }
             return Page();
         }
