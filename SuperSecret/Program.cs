@@ -1,4 +1,5 @@
 using FluentValidation;
+using Scalar.AspNetCore;
 using SuperSecret.Infrastructure;
 using SuperSecret.Models;
 using SuperSecret.Services;
@@ -18,6 +19,8 @@ builder.Services.AddRazorPages();
 builder.Services.AddSingleton<ITokenService, TokenService>();
 builder.Services.AddScoped<ILinkStore, SqlLinkStore>();
 builder.Services.AddScoped<IValidator<CreateLinkRequest>, CreateLinkValidator>();
+
+builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
@@ -59,6 +62,9 @@ api.MapPost("/links", async (CreateLinkRequest request,
 
 // Redirect root to admin
 app.MapGet("/", () => Results.Redirect("/Admin"));
+
+app.MapOpenApi();
+app.MapScalarApiReference();
 
 app.Run();
 

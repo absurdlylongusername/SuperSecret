@@ -118,7 +118,11 @@ Update the connection string in `appsettings.json` (or `appsettings.Development.
 Set a Token Signing key in the appsettings or in user secrets.
 
 
-After that you can run the app. 
+After that you can run the app.
+
+## Scalar API
+
+This uses [Scalar](https://github.com/scalar/scalar), an OpenAPI browser client for querying the API. You can access it at `{domain}/scalar`.
 
 
 ## Running the tests
