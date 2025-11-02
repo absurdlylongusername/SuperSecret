@@ -7,15 +7,8 @@ using SuperSecret.Validators;
 var builder = WebApplication.CreateBuilder(args);
 
 // Options
-builder.Services.Configure<TokenOptions>(o =>
-{
-    o.TokenSigningKey = builder.Configuration[nameof(TokenOptions.TokenSigningKey)];
-});
-
-builder.Services.Configure<DatabaseOptions>(o =>
-{
-    o.ConnectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-});
+builder.Services.Configure<TokenOptions>(builder.Configuration.GetRequiredSection(nameof(TokenOptions)));
+builder.Services.Configure<DatabaseOptions>(builder.Configuration.GetRequiredSection(nameof(DatabaseOptions)));
 
 // Infrastructure
 builder.Services.AddSingleton<IDbConnectionFactory, SqlConnectionFactory>();

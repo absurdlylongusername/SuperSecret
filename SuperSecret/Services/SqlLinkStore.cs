@@ -1,4 +1,5 @@
 using Dapper;
+using Microsoft.Extensions.Options;
 using NUlid;
 using SuperSecret.Infrastructure;
 using SuperSecret.Models;
@@ -8,10 +9,13 @@ namespace SuperSecret.Services;
 public class SqlLinkStore : ILinkStore
 {
     private readonly IDbConnectionFactory _connectionFactory;
+    private readonly int _maxTTLInMinutes;
+    private DateTime MaxExpiryDate => DateTimeOffset.UtcNow.AddMinutes(_maxTTLInMinutes).UtcDateTime;
 
-    public SqlLinkStore(IDbConnectionFactory connectionFactory)
+    public SqlLinkStore(IDbConnectionFactory connectionFactory, IOptions<TokenOptions> tokenOptions)
     {
         _connectionFactory = connectionFactory;
+        _maxTTLInMinutes = tokenOptions.Value.MaxTTLInMinutes;
     }
 
     public async Task CreateAsync(SecretLinkClaims claims)
@@ -20,19 +24,20 @@ public class SqlLinkStore : ILinkStore
 
         var jtiBytes = claims.Jti.ToByteArray();
         var maxClicks = claims.Max ?? 1;
+        var expiresAt = claims.Exp?.UtcDateTime ?? MaxExpiryDate;
 
         if (maxClicks == 1)
         {
             await conn.ExecuteAsync(
                 DbObjects.Procs.CreateSingleUseLink,
-                new { jti = jtiBytes, expiresAt = claims.Exp?.UtcDateTime },
+                new { jti = jtiBytes, expiresAt },
                 commandType: System.Data.CommandType.StoredProcedure);
         }
         else
         {
             await conn.ExecuteAsync(
                 DbObjects.Procs.CreateMultiUseLink,
-                new { jti = jtiBytes, clicksLeft = maxClicks, expiresAt = claims.Exp?.UtcDateTime },
+                new { jti = jtiBytes, clicksLeft = maxClicks, expiresAt },
                 commandType: System.Data.CommandType.StoredProcedure);
         }
     }

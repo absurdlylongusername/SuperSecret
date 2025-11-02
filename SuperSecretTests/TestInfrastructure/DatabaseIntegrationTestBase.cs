@@ -58,6 +58,14 @@ public abstract class DatabaseIntegrationTestBase
         return await conn.QuerySingleAsync<int>(sql, new { jti = jti.ToByteArray() });
     }
 
+    protected async Task<DateTimeOffset?> GetExpiryDateAsync(Ulid jti, bool singleUse = true)
+    {
+        var table = singleUse ? DbObjects.Tables.SingleUseLinks : DbObjects.Tables.MultiUseLinks;
+        var sql = $"SELECT ExpiresAt FROM {table} WHERE Jti = @jti";
+        await using var conn = await _connectionFactory.CreateOpenConnectionAsync();
+        return await conn.QuerySingleOrDefaultAsync<DateTime?>(sql, new { jti = jti.ToByteArray() });
+    }
+
     protected async Task<int> CountMultiUseAsync(Ulid jti)
     {
         var sql = $"SELECT COUNT(*) FROM {DbObjects.Tables.MultiUseLinks} WHERE Jti = @jti";

@@ -5,8 +5,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Options;
 using Moq;
 using NUlid;
+using SuperSecret.Infrastructure;
 using SuperSecret.Models;
 using SuperSecret.Pages.Admin;
 using SuperSecret.Services;
@@ -26,7 +28,8 @@ public class AdminIndexPageTests
     [SetUp]
     public void SetUp()
     {
-        _page = CreatePage(_tokenServiceMock.Object, _linkStoreMock.Object, _validatorMock.Object);
+        var tokenOptions = Options.Create(new TokenOptions());
+        _page = CreatePage(_tokenServiceMock.Object, _linkStoreMock.Object, _validatorMock.Object, tokenOptions);
     }
 
     [TearDown]
@@ -55,7 +58,7 @@ public class AdminIndexPageTests
             Assert.That(_page.Input, Is.Not.Null);
             Assert.That(_page.Input.Username, Is.EqualTo(string.Empty));
             Assert.That(_page.Input.Max, Is.EqualTo(1));
-            Assert.That(_page.Input.ExpiresAt, Is.Null);
+            Assert.That(_page.Input.ExpiresAt, Is.GreaterThanOrEqualTo(DateTimeOffset.UtcNow));
             Assert.That(_page.GeneratedUrl, Is.Null);
         });
     }
@@ -119,15 +122,31 @@ public class AdminIndexPageTests
     {
         // Arrange
         var jti = Ulid.NewUlid();
-        var claims = new SecretLinkClaims(DefaultUsername, jti, 1, null);
         _page.Input.Username = DefaultUsername;
         _page.Input.Max = 1;
         _page.Input.ExpiresAt = null;
 
         SetupValidatorSuccess(_page.Input, Times.Once());
-        _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 1, null)).Returns(claims).Verifiable(Times.Once());
-        _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask).Verifiable(Times.Once());
-        _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Returns("mock-token").Verifiable(Times.Once());
+
+        _tokenServiceMock
+            .Setup(s => s.Create(DefaultUsername, 1, It.IsAny<DateTimeOffset?>()))
+            .Returns((string u, int m, DateTimeOffset? exp) => 
+                new SecretLinkClaims(u, jti, m, exp))
+            .Verifiable(Times.Once());
+
+        _linkStoreMock
+            .Setup(s => s.CreateAsync(It.Is<SecretLinkClaims>(c =>
+                c.Sub == DefaultUsername &&
+                c.Max == 1 &&
+                c.Jti == jti &&
+                c.Exp == _page.Input.ExpiresAt))) // default max expiry applied
+            .Returns(Task.CompletedTask)
+            .Verifiable(Times.Once());
+
+        _tokenServiceMock
+            .Setup(s => s.TokenToJson(It.IsAny<SecretLinkClaims>()))
+            .Returns("mock-token")
+            .Verifiable(Times.Once());
 
         // Act
         var result = await _page.OnPostAsync();
@@ -204,15 +223,26 @@ public class AdminIndexPageTests
     {
         // Arrange
         var jti = Ulid.NewUlid();
-        var claims = new SecretLinkClaims(DefaultUsername, jti, 1, null);
         _page.Input.Username = DefaultUsername;
         _page.Input.Max = 1;
         _page.Input.ExpiresAt = null;
 
         SetupValidatorSuccess(_page.Input, Times.Once());
-        _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 1, null)).Returns(claims).Verifiable(Times.Once());
-        _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask).Verifiable(Times.Once());
-        _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Returns("mock-token").Verifiable(Times.Once());
+
+        _tokenServiceMock
+            .Setup(s => s.Create(DefaultUsername, 1, It.IsAny<DateTimeOffset?>()))
+            .Returns((string u, int m, DateTimeOffset? exp) => new SecretLinkClaims(u, jti, m, exp))
+            .Verifiable(Times.Once());
+
+        _linkStoreMock
+            .Setup(s => s.CreateAsync(It.Is<SecretLinkClaims>(c => c.Sub == DefaultUsername && c.Max == 1 && c.Jti == jti && c.Exp == _page.Input.ExpiresAt)))
+            .Returns(Task.CompletedTask)
+            .Verifiable(Times.Once());
+
+        _tokenServiceMock
+            .Setup(s => s.TokenToJson(It.IsAny<SecretLinkClaims>()))
+            .Returns("mock-token")
+            .Verifiable(Times.Once());
 
         // Act
         await _page.OnPostAsync();
@@ -257,7 +287,6 @@ public class AdminIndexPageTests
     {
         // Arrange
         var jti = Ulid.NewUlid();
-        var claims = new SecretLinkClaims(DefaultUsername, jti, 1, null);
         _page.Input.Username = DefaultUsername;
         _page.Input.Max = 1;
         _page.Input.ExpiresAt = null;
@@ -266,9 +295,21 @@ public class AdminIndexPageTests
         _page.HttpContext.Request.Host = new HostString("localhost", 5001);
 
         SetupValidatorSuccess(_page.Input, Times.Once());
-        _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 1, null)).Returns(claims).Verifiable(Times.Once());
-        _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask).Verifiable(Times.Once());
-        _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Returns("abc123token").Verifiable(Times.Once());
+
+        _tokenServiceMock
+            .Setup(s => s.Create(DefaultUsername, 1, It.IsAny<DateTimeOffset?>()))
+            .Returns((string u, int m, DateTimeOffset? exp) => new SecretLinkClaims(u, jti, m, exp))
+            .Verifiable(Times.Once());
+
+        _linkStoreMock
+            .Setup(s => s.CreateAsync(It.Is<SecretLinkClaims>(c => c.Sub == DefaultUsername && c.Max == 1 && c.Jti == jti && c.Exp == _page.Input.ExpiresAt)))
+            .Returns(Task.CompletedTask)
+            .Verifiable(Times.Once());
+
+        _tokenServiceMock
+            .Setup(s => s.TokenToJson(It.IsAny<SecretLinkClaims>()))
+            .Returns("abc123token")
+            .Verifiable(Times.Once());
 
         // Act
         await _page.OnPostAsync();
@@ -285,14 +326,25 @@ public class AdminIndexPageTests
     {
         // Arrange
         var jti = Ulid.NewUlid();
-        var claims = new SecretLinkClaims(DefaultUsername, jti, 1, null);
         _page.Input.Username = DefaultUsername;
         _page.Input.Max = 1;
 
         SetupValidatorSuccess(_page.Input, Times.Once());
-        _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 1, null)).Returns(claims).Verifiable(Times.Once());
-        _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask).Verifiable(Times.Once());
-        _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Returns("token").Verifiable(Times.Once());
+
+        _tokenServiceMock
+            .Setup(s => s.Create(DefaultUsername, 1, It.IsAny<DateTimeOffset?>()))
+            .Returns((string u, int m, DateTimeOffset? exp) => new SecretLinkClaims(u, jti, m, exp))
+            .Verifiable(Times.Once());
+
+        _linkStoreMock
+            .Setup(s => s.CreateAsync(It.IsAny<SecretLinkClaims>()))
+            .Returns(Task.CompletedTask)
+            .Verifiable(Times.Once());
+
+        _tokenServiceMock
+            .Setup(s => s.TokenToJson(It.IsAny<SecretLinkClaims>()))
+            .Returns("token")
+            .Verifiable(Times.Once());
 
         // Act
         var result = await _page.OnPostAsync();
@@ -312,14 +364,25 @@ public class AdminIndexPageTests
         // Arrange
         var username = new string('a', 50);
         var jti = Ulid.NewUlid();
-        var claims = new SecretLinkClaims(username, jti, 1, null);
         _page.Input.Username = username;
         _page.Input.Max = 1;
 
         SetupValidatorSuccess(_page.Input, Times.Once());
-        _tokenServiceMock.Setup(s => s.Create(username, 1, null)).Returns(claims).Verifiable(Times.Once());
-        _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask).Verifiable(Times.Once());
-        _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Returns("token").Verifiable(Times.Once());
+
+        _tokenServiceMock
+            .Setup(s => s.Create(username, 1, It.IsAny<DateTimeOffset?>()))
+            .Returns((string u, int m, DateTimeOffset? exp) => new SecretLinkClaims(u, jti, m, exp))
+            .Verifiable(Times.Once());
+
+        _linkStoreMock
+            .Setup(s => s.CreateAsync(It.Is<SecretLinkClaims>(c => c.Sub == username && c.Max == 1 && c.Jti == jti && c.Exp.HasValue)))
+            .Returns(Task.CompletedTask)
+            .Verifiable(Times.Once());
+
+        _tokenServiceMock
+            .Setup(s => s.TokenToJson(It.IsAny<SecretLinkClaims>()))
+            .Returns("token")
+            .Verifiable(Times.Once());
 
         // Act
         var result = await _page.OnPostAsync();
@@ -330,31 +393,6 @@ public class AdminIndexPageTests
             Assert.That(result, Is.InstanceOf<PageResult>());
             Assert.That(_page.ModelState.IsValid, Is.True);
         });
-        _validatorMock.VerifyAll();
-        _tokenServiceMock.VerifyAll();
-        _linkStoreMock.VerifyAll();
-    }
-
-    [Test]
-    public async Task OnPostAsync_HandlesMaxInt()
-    {
-        // Arrange
-        var jti = Ulid.NewUlid();
-        var claims = new SecretLinkClaims(DefaultUsername, jti, int.MaxValue, null);
-        _page.Input.Username = DefaultUsername;
-        _page.Input.Max = int.MaxValue;
-
-        SetupValidatorSuccess(_page.Input, Times.Once());
-        _tokenServiceMock.Setup(s => s.Create(DefaultUsername, int.MaxValue, null)).Returns(claims).Verifiable(Times.Once());
-        _linkStoreMock.Setup(s => s.CreateAsync(claims)).Returns(Task.CompletedTask).Verifiable(Times.Once());
-        _tokenServiceMock.Setup(s => s.TokenToJson(claims)).Returns("token").Verifiable(Times.Once());
-
-        // Act
-        var result = await _page.OnPostAsync();
-
-        // Assert
-        Assert.That(result, Is.InstanceOf<PageResult>());
-        _tokenServiceMock.Verify(s => s.Create(DefaultUsername, int.MaxValue, null), Times.Once);
         _validatorMock.VerifyAll();
         _tokenServiceMock.VerifyAll();
         _linkStoreMock.VerifyAll();
@@ -383,6 +421,7 @@ public class AdminIndexPageTests
         // Arrange
         _page.Input.Username = DefaultUsername;
         _page.Input.Max = 1;
+        _page.Input.ExpiresAt = null;
 
         SetupValidatorSuccess(_page.Input, Times.Once());
         _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 1, null))
@@ -403,6 +442,7 @@ public class AdminIndexPageTests
         var claims = new SecretLinkClaims(DefaultUsername, jti, 1, null);
         _page.Input.Username = DefaultUsername;
         _page.Input.Max = 1;
+        _page.Input.ExpiresAt = null;
 
         SetupValidatorSuccess(_page.Input, Times.Once());
         _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 1, null)).Returns(claims).Verifiable(Times.Once());
@@ -423,6 +463,7 @@ public class AdminIndexPageTests
         var claims = new SecretLinkClaims(DefaultUsername, jti, 1, null);
         _page.Input.Username = DefaultUsername;
         _page.Input.Max = 1;
+        _page.Input.ExpiresAt = null;
 
         SetupValidatorSuccess(_page.Input, Times.Once());
         _tokenServiceMock.Setup(s => s.Create(DefaultUsername, 1, null)).Returns(claims).Verifiable(Times.Once());
@@ -457,7 +498,8 @@ public class AdminIndexPageTests
 
     private static IndexModel CreatePage(ITokenService tokenService,
                                          ILinkStore linkStore,
-                                         IValidator<CreateLinkRequest> validator)
+                                         IValidator<CreateLinkRequest> validator,
+                                         IOptions<TokenOptions> tokenOptions)
     {
         var httpContext = new DefaultHttpContext();
         httpContext.Request.Scheme = "http";
@@ -471,7 +513,7 @@ public class AdminIndexPageTests
                 new ModelStateDictionary())
         };
 
-        var page = new IndexModel(tokenService, linkStore, validator)
+        var page = new IndexModel(tokenService, linkStore, validator, tokenOptions)
         {
             PageContext = pageContext
         };

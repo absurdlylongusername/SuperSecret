@@ -11,7 +11,7 @@ public class ExpiredLinkCleanupService : BackgroundService
 
     public ExpiredLinkCleanupService(ILogger<ExpiredLinkCleanupService> logger,
                                      ILinkCleanupService cleanupService,
-                                     IOptions<CleanupOptions> options) 
+                                     IOptions<CleanupOptions> options)
     {
         _logger = logger;
         _cleanupService = cleanupService;

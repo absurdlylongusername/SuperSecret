@@ -20,6 +20,7 @@
           <input asp-for="@Model.Input.Max"
                           type="number"
                           min="1"
+                          max="@Model.MaxClicks"
                           step="1"
                           class="form-control bg-dark text-light border-secondary" />
           <span asp-validation-for="@Model.Input.Max" class="text-danger small"></span>

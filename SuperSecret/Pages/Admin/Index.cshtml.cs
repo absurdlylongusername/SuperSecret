@@ -1,19 +1,25 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Options;
+using SuperSecret.Infrastructure;
 using SuperSecret.Models;
 using SuperSecret.Services;
+using System.Diagnostics;
 
 namespace SuperSecret.Pages.Admin;
 
 public class IndexModel(ITokenService tokenService,
                         ILinkStore linkStore,
-                        IValidator<CreateLinkRequest> validator) : PageModel
+                        IValidator<CreateLinkRequest> validator,
+                        IOptions<TokenOptions> tokenOptions) : PageModel
 {
     [BindProperty]
     public CreateLinkViewModel Input { get; set; } = new();
 
     public string? GeneratedUrl { get; set; }
+
+    public int MaxClicks { get; } = tokenOptions.Value.MaxClicks;
 
     public void OnGet()
     {
@@ -27,11 +33,11 @@ public class IndexModel(ITokenService tokenService,
         }
 
         var request = new CreateLinkRequest(Input.Username, Input.Max, Input.ExpiresAt);
+
         var validationResult = await validator.ValidateAsync(request);
 
         if (!validationResult.IsValid)
         {
-            // IMPORTANT: prefix property name with "Input." so Razor binds errors to the correct fields
             foreach (var error in validationResult.Errors)
             {
                 ModelState.AddModelError($"Input.{error.PropertyName}", error.ErrorMessage);
@@ -39,11 +45,9 @@ public class IndexModel(ITokenService tokenService,
             return Page();
         }
 
-        // Create claims and store
         var claims = tokenService.Create(Input.Username, Input.Max, Input.ExpiresAt);
         await linkStore.CreateAsync(claims);
 
-        // Generate URL
         var token = tokenService.TokenToJson(claims);
         GeneratedUrl = $"{Request.Scheme}://{Request.Host}/supersecret/{token}";
 

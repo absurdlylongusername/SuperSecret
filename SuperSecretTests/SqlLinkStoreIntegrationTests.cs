@@ -1,9 +1,10 @@
-using System.Data;
+using Microsoft.Extensions.Options;
 using NUlid;
 using SuperSecret.Infrastructure;
 using SuperSecret.Models;
 using SuperSecret.Services;
 using SuperSecretTests.TestInfrastructure;
+using System.Data;
 
 namespace SuperSecretTests;
 
@@ -14,6 +15,7 @@ public class SqlLinkStoreIntegrationTests : DatabaseIntegrationTestBase
     private const string DefaultUsername = "user";
 
     private SqlLinkStore _store = null!;
+    private readonly int maxExpiryInMinutes = 60;
 
     [OneTimeSetUp]
     public async Task OneTimeSetUp_DatabaseObjects()
@@ -31,7 +33,8 @@ public class SqlLinkStoreIntegrationTests : DatabaseIntegrationTestBase
     [SetUp]
     public void SetUp()
     {
-        _store = new SqlLinkStore(_connectionFactory);
+        var tokenOptions = Options.Create(new TokenOptions { MaxTTLInMinutes = maxExpiryInMinutes});
+        _store = new SqlLinkStore(_connectionFactory, tokenOptions);
     }
 
     // ---------------- CreateAsync (Single-use) ----------------
@@ -60,6 +63,29 @@ public class SqlLinkStoreIntegrationTests : DatabaseIntegrationTestBase
         {
             Assert.That(await CountSingleUseAsync(jti), Is.EqualTo(1));
             Assert.That(await CountMultiUseAsync(jti), Is.EqualTo(0));
+        });
+
+        // Cleanup
+        await DeleteByJtiAsync(jti);
+    }
+
+    [Test]
+    public async Task CreateAsync_HasMaxExpiry_WhenExpiryIsNull()
+    {
+        // Arrange
+        var jti = Ulid.NewUlid();
+        var claims = new SecretLinkClaims(DefaultUsername, jti, 1, null);
+
+        var expectedExpiryDate = DateTimeOffset.UtcNow.AddMinutes(maxExpiryInMinutes);
+
+        // Act
+        await _store.CreateAsync(claims);
+
+        // Assert
+        Assert.Multiple(async () =>
+        {
+            Assert.That(await CountSingleUseAsync(jti), Is.EqualTo(1));
+            Assert.That(await GetExpiryDateAsync(jti), Is.EqualTo(expectedExpiryDate).Within(2).Seconds);
         });
 
         // Cleanup
