@@ -127,6 +127,38 @@ public partial class AdminIndexPagePlaywrightTests : PageTest
         }
     }
 
+    [TestCaseSource(nameof(InvalidRequestTestCases))]
+
+    public async Task UI_ShowsValidationErrors_For(string username,
+                                                                  int maxClicks,
+                                                                  int? expiresInMinutes,
+                                                                  string? usernameValidationMessage,
+                                                                  string? maxClicksValidationMessage,
+                                                                  string? expiryDateValidationMessage)
+    {
+        var expiryDate = expiresInMinutes.HasValue
+            ? DateTimeOffset.UtcNow.AddMinutes(expiresInMinutes.Value)
+            : (DateTimeOffset?)null;
+        await FillFormAsync(username, maxClicks, expiryDate);
+        await SubmitFormAsync();
+
+        var linkBox = Page.Locator("#generatedUrl");
+        await Expect(linkBox).Not.ToBeVisibleAsync();
+
+        var copyButton = Page.GetByRole(AriaRole.Button, new() { Name = "Copy" });
+        await Expect(copyButton).Not.ToBeVisibleAsync();
+
+        foreach (var validationMessage in (string?[])[usernameValidationMessage,
+                                                      maxClicksValidationMessage,
+                                                      expiryDateValidationMessage])
+        {
+            if (validationMessage != null)
+            {
+                await Expect(Page.GetByText(validationMessage)).ToBeVisibleAsync();
+            }
+        }
+    }
+
     // -------------- Helpers --------------
 
     private async Task FillUsername(string? username)

@@ -13,4 +13,7 @@ public static class ValidationMessages
 
     // ExpiresAt validation messages
     public const string ExpiryDateFuture = "Expiry date must be in the future";
+    public const string ExpiryDateMaxLimit = "Expiry date must be less than 30 days";
+    
+    
 }

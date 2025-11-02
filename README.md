@@ -92,7 +92,7 @@ I initially developed this by just writing the functionality, but switched to us
 
 This helped me avoid the situation of writing a bunch of code, running it, finding out it doesn't work, and spending ages fixing an obscure bug: a scenario which I've experienced many a time. Since the general API and interface of the program had already been specified, I was able to write tests first and then focus on refining implementation afterwards.
 
-As a result, almost all of the code is unit and integration tested
+As a result, most of the code is unit and integration tested, however some of the tests are not finished or failing due to last minute changes I made and I didn't have time to go back and fix the tests, but I verified functionality manually.
 
 # How to run it
 

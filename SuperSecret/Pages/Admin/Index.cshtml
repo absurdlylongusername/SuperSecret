@@ -18,22 +18,76 @@
         <div class="mb-3">
           <label asp-for="@Model.Input.Max" class="form-label"></label>
           <input asp-for="@Model.Input.Max"
-                          type="number"
-                          min="1"
-                          max="@Model.MaxClicks"
-                          step="1"
-                          class="form-control bg-dark text-light border-secondary" />
+                 type="number"
+                 min="1"
+                 max="@Model.MaxClicks"
+                 step="1"
+                 class="form-control bg-dark text-light border-secondary" />
           <span asp-validation-for="@Model.Input.Max" class="text-danger small"></span>
         </div>
 
-        <div class="mb-3">
-          @* @{ var now = DateTimeOffset.Now.ToString("yyyy-MM-ddTHH:mm"); } *@
-          <label asp-for="@Model.Input.ExpiresAt" class="form-label"></label>
-          <input asp-for="@Model.Input.ExpiresAt" type="datetime-local" 
-                          min="@DateTimeOffset.UtcNow:yyyy-MM-ddTHH:mm"
-                          class="form-control bg-dark text-light border-secondary" />
-          <span asp-validation-for="@Model.Input.ExpiresAt" class="text-danger small"></span>
+        <!-- Custom expiry toggle -->
+        <div class="form-check form-switch mb-2">
+          <input asp-for="Input.HasExpiryDate" class="form-check-input" />
+          <label asp-for="Input.HasExpiryDate" class="form-check-label">Set custom expiry</label>
         </div>
+
+        <!-- Duration inputs in a horizontal row -->
+        <fieldset id="expiryGroup" disabled>
+          <span asp-validation-for="@Model.Input.ExpiresAt" class="text-danger small"></span>
+          <div class="mb-3">
+            <div class="d-flex gap-2">
+              <div class="flex-fill">
+                <label asp-for="Input.DurationInDays"></label>
+                <input asp-for="Input.DurationInDays"
+                       type="number"
+                       min="0"
+                       max="30"
+                       step="1"
+                       placeholder="Days"
+                       class="form-control bg-dark text-light border-secondary text-center expiry-field" />
+                <span asp-validation-for="Input.DurationInDays" class="text-danger small"></span>
+              </div>
+
+              <div class="flex-fill">
+                <label asp-for="Input.DurationInHours"></label>
+                <input asp-for="Input.DurationInHours"
+                       type="number"
+                       min="0"
+                       max="23"
+                       step="1"
+                       placeholder="Hours"
+                       class="form-control bg-dark text-light border-secondary text-center expiry-field" />
+                <span asp-validation-for="Input.DurationInHours" class="text-danger small"></span>
+              </div>
+
+              <div class="flex-fill">
+                <label asp-for="Input.DurationInMinutes"></label>
+                <input asp-for="Input.DurationInMinutes"
+                       type="number"
+                       min="0"
+                       max="59"
+                       step="1"
+                       placeholder="Minutes"
+                       class="form-control bg-dark text-light border-secondary text-center expiry-field" />
+                <span asp-validation-for="Input.DurationInMinutes" class="text-danger small"></span>
+              </div>
+
+              <div class="flex-fill">
+                <label asp-for="Input.DurationInSeconds"></label>
+                <input asp-for="Input.DurationInSeconds"
+                       type="number"
+                       min="0"
+                       max="59"
+                       step="1"
+                       placeholder="Seconds"
+                       class="form-control bg-dark text-light border-secondary text-center expiry-field" />
+                <span asp-validation-for="Input.DurationInSeconds" class="text-danger small"></span>
+              </div>
+            </div>
+            <div class="form-text mt-1">Specify how long the link lasts. Leave unchecked to use the default expiry.</div>
+          </div>
+        </fieldset>
 
         <div class="d-flex justify-content-end">
           <button type="submit" class="btn btn-primary">Generate Link</button>
@@ -57,6 +111,15 @@
 @section Scripts {
   <partial name="_ValidationScriptsPartial" />
   <script>
+    (function () {
+      const toggle = document.getElementById('Input_HasExpiryDate');
+      const expiryGroup = document.getElementById('expiryGroup');
+
+      const sync = () => expiryGroup.disabled = !toggle.checked;
+      sync();
+      toggle.addEventListener('change', sync);
+    })();
+
     function copyLink() {
       const input = document.getElementById('generatedUrl');
       if (!input) return;

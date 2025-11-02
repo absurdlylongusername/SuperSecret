@@ -27,6 +27,23 @@ public class IndexModel(ITokenService tokenService,
 
     public async Task<IActionResult> OnPostAsync()
     {
+        if (!Input.HasExpiryDate)
+        {
+            ModelState.Remove(nameof(Input.ExpiresAt));
+            ModelState.Remove(nameof(Input.DurationInDays));
+            ModelState.Remove(nameof(Input.DurationInHours));
+            ModelState.Remove(nameof(Input.DurationInMinutes));
+            ModelState.Remove(nameof(Input.DurationInSeconds));
+            Input.ExpiresAt = null;
+        }
+        else
+        {
+            Input.ExpiresAt = DateTimeOffset.UtcNow.AddDays(Input.DurationInDays)
+                                                   .AddHours(Input.DurationInHours)
+                                                   .AddMinutes(Input.DurationInMinutes)
+                                                   .AddSeconds(Input.DurationInSeconds);
+        }
+
         if (!ModelState.IsValid)
         {
             return Page();
@@ -40,7 +57,7 @@ public class IndexModel(ITokenService tokenService,
         {
             foreach (var error in validationResult.Errors)
             {
-                ModelState.AddModelError($"Input.{error.PropertyName}", error.ErrorMessage);
+                ModelState.AddModelError($"{nameof(Input)}.{error.PropertyName}", error.ErrorMessage);
             }
             return Page();
         }

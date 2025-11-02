@@ -12,6 +12,7 @@ public partial class CreateLinkValidator : AbstractValidator<CreateLinkRequest>
     {
         var maxExpiresInMinutes = options.Value.MaxTTLInMinutes;
         var maxClicks = options.Value.MaxClicks;
+
         RuleFor(x => x.Username)
             .NotEmpty().WithMessage(ValidationMessages.UsernameRequired)
             .Length(1, 50).WithMessage(ValidationMessages.UsernameLength)
@@ -21,9 +22,13 @@ public partial class CreateLinkValidator : AbstractValidator<CreateLinkRequest>
             .InclusiveBetween(1, maxClicks);
 
         RuleFor(x => x.ExpiresAt)
-            .Must(date => date!.Value > DateTimeOffset.UtcNow && date.Value <= DateTimeOffset.UtcNow.AddMinutes(maxExpiresInMinutes))
-            .When(x => x.ExpiresAt.HasValue)
-            .WithMessage(ValidationMessages.ExpiryDateFuture);
+            .Cascade(CascadeMode.Stop)
+            // If provided, must be in the future
+            .Must(exp => !exp.HasValue || exp.Value > DateTimeOffset.UtcNow)
+                .WithMessage(ValidationMessages.ExpiryDateFuture)
+            // If provided, must be within the max TTL
+            .Must(exp => !exp.HasValue || exp.Value <= DateTimeOffset.UtcNow.AddMinutes(maxExpiresInMinutes))
+                .WithMessage(ValidationMessages.ExpiryDateMaxLimit);
     }
 
     [GeneratedRegex("^[A-Za-z0-9]+$", RegexOptions.Compiled | RegexOptions.CultureInvariant)]
