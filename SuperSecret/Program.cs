@@ -48,11 +48,9 @@ api.MapPost("/links", async (CreateLinkRequest request,
         return Results.ValidationProblem(validationResult.ToDictionary());
     }
 
-    // Create claims and store
     var claims = tokenService.Create(request.Username, request.Max, request.ExpiresAt);
     await linkStore.CreateAsync(claims);
 
-    // Generate URL
     var token = tokenService.TokenToJson(claims);
     var url = $"{ctx.Request.Scheme}://{ctx.Request.Host}/supersecret/{token}";
 

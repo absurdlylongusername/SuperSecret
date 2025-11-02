@@ -40,7 +40,7 @@ public class ExpiredLinkCleanupService : BackgroundService
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
-            // Expected during shutdown, swallow to allow graceful stop logging
+
         }
         finally
         {

@@ -23,18 +23,8 @@ public class LinkCleanupService : ILinkCleanupService
 
             await using var conn = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
 
-            const string sql = """
-                DELETE FROM dbo.SingleUseLinks 
-                WHERE ExpiresAt IS NOT NULL AND ExpiresAt <= SYSUTCDATETIME();
-                
-                DELETE FROM dbo.MultiUseLinks 
-                WHERE ExpiresAt IS NOT NULL AND ExpiresAt <= SYSUTCDATETIME();
-                
-                SELECT @@ROWCOUNT AS TotalDeleted;
-                """;
-
             var rowsDeleted =
-            await conn.QuerySingleAsync<int>("dbo.DeleteExpiredLinks",
+            await conn.QuerySingleAsync<int>(DbObjects.Procs.DeleteExpiredLinks,
                                              commandType: CommandType.StoredProcedure);
 
             if (rowsDeleted > 0)

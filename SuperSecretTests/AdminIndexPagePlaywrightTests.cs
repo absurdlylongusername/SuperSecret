@@ -23,13 +23,8 @@ public partial class AdminIndexPagePlaywrightTests : PageTest
         Permissions = ["clipboard-read", "clipboard-write"]
     };
 
-    [SetUp]                // Per-test hook (shown in docs)
+    [SetUp]
     public async Task GoToAdmin() => await Page.GotoAsync("/admin");
-
-
-    // -------------- Happy Path - Single-use --------------
-
-
 
 
     private static IEnumerable<TestCaseData> ValidSingleUseTestCases()
@@ -42,11 +37,6 @@ public partial class AdminIndexPagePlaywrightTests : PageTest
     [TestCaseSource(nameof(ValidSingleUseTestCases))]
     public async Task UI_CreatesValidSingleUseLink_WithValidRequests(string username, int? expiresInMinutes)
     {
-        // What should happen in this test?
-        // Fills in the form with the data
-        //Presses submit
-        // Navigates to the Page, sees secret
-        // Navigate again, sees no secret
         var expiryDate = expiresInMinutes.HasValue
             ? DateTimeOffset.UtcNow.AddMinutes(expiresInMinutes.Value)
             : (DateTimeOffset?)null;
@@ -95,6 +85,7 @@ public partial class AdminIndexPagePlaywrightTests : PageTest
             null);
     }
 
+    // TODO: Fix validation tests
     [TestCaseSource(nameof(InvalidRequestTestCases))]
 
     public async Task UI_ShowsValidationErrors_ForInvalidRequests(string username,
@@ -127,38 +118,6 @@ public partial class AdminIndexPagePlaywrightTests : PageTest
         }
     }
 
-    [TestCaseSource(nameof(InvalidRequestTestCases))]
-
-    public async Task UI_ShowsValidationErrors_For(string username,
-                                                                  int maxClicks,
-                                                                  int? expiresInMinutes,
-                                                                  string? usernameValidationMessage,
-                                                                  string? maxClicksValidationMessage,
-                                                                  string? expiryDateValidationMessage)
-    {
-        var expiryDate = expiresInMinutes.HasValue
-            ? DateTimeOffset.UtcNow.AddMinutes(expiresInMinutes.Value)
-            : (DateTimeOffset?)null;
-        await FillFormAsync(username, maxClicks, expiryDate);
-        await SubmitFormAsync();
-
-        var linkBox = Page.Locator("#generatedUrl");
-        await Expect(linkBox).Not.ToBeVisibleAsync();
-
-        var copyButton = Page.GetByRole(AriaRole.Button, new() { Name = "Copy" });
-        await Expect(copyButton).Not.ToBeVisibleAsync();
-
-        foreach (var validationMessage in (string?[])[usernameValidationMessage,
-                                                      maxClicksValidationMessage,
-                                                      expiryDateValidationMessage])
-        {
-            if (validationMessage != null)
-            {
-                await Expect(Page.GetByText(validationMessage)).ToBeVisibleAsync();
-            }
-        }
-    }
-
     // -------------- Helpers --------------
 
     private async Task FillUsername(string? username)
@@ -177,7 +136,6 @@ public partial class AdminIndexPagePlaywrightTests : PageTest
         await maxClicksInput.FillAsync(maxClicks.ToString());
     }
 
-    // HTML input type="datetime-local" expects local time in "yyyy-MM-ddTHH:mm"
     private static string ToDatetimeLocal(DateTimeOffset dto)
         => dto.ToLocalTime().ToString("yyyy-MM-ddTHH:mm");
 

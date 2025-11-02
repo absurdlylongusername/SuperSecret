@@ -26,13 +26,11 @@
           <span asp-validation-for="@Model.Input.Max" class="text-danger small"></span>
         </div>
 
-        <!-- Custom expiry toggle -->
         <div class="form-check form-switch mb-2">
           <input asp-for="Input.HasExpiryDate" class="form-check-input" />
           <label asp-for="Input.HasExpiryDate" class="form-check-label">Set custom expiry</label>
         </div>
 
-        <!-- Duration inputs in a horizontal row -->
         <fieldset id="expiryGroup" disabled>
           <span asp-validation-for="@Model.Input.ExpiresAt" class="text-danger small"></span>
           <div class="mb-3">

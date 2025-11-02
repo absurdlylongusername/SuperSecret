@@ -10,7 +10,6 @@ namespace SuperSecretTests.Services;
 [Category("Unit")]
 public class ExpiredLinkCleanupServiceTests
 {
-    // TODO: Finish these tests
     private Mock<ILogger<ExpiredLinkCleanupService>> _mockLogger = null!;
     private Mock<ILinkCleanupService> _mockCleanupService = null!;
     private IOptions<CleanupOptions> _options = null!;
@@ -77,7 +76,6 @@ public class ExpiredLinkCleanupServiceTests
         await _service.StartAsync(cts.Token);
         await Task.Delay(150);
         await _service.StopAsync(cts.Token);
-        await Task.Delay(200); // Allow time for stop log
 
         // Assert
         Assert.Multiple(() =>
@@ -112,25 +110,27 @@ public class ExpiredLinkCleanupServiceTests
     }
 
     [Test]
-    public async Task ExecuteAsync_PropagatesExceptionsFromCleanup()
+    public void ExecuteAsync_PropagatesExceptionsFromCleanup()
     {
         // Arrange
         var cts = new CancellationTokenSource();
         cts.CancelAfter(100);
 
         _mockCleanupService.Setup(c => c.CleanupExpiredLinksAsync(It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("Cleanup failed"));
+            .ThrowsAsync(new InvalidOperationException("Cleanup failed")).Verifiable(Times.Once());
 
         SetupLogger("starting");
         SetupLogger("stopping");
 
-        // Act & Assert - Should not throw, service should continue
-        await _service.StartAsync(cts.Token);
-        await Task.Delay(150);
-        await _service.StopAsync(CancellationToken.None);
+        // Act & Assert
+        Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        {
+            await _service.StartAsync(cts.Token);
+            await Task.Delay(150);
+            await _service.StopAsync(CancellationToken.None);
+        });
 
-        // Verify cleanup was attempted at least once
-        _mockCleanupService.Verify(c => c.CleanupExpiredLinksAsync(It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+        _mockCleanupService.VerifyAll();
     }
 
     // ---------- Edge Cases ----------
@@ -160,6 +160,7 @@ public class ExpiredLinkCleanupServiceTests
 
     // ---------- Helper Methods ----------
 
+    // TODO: consolidate with DatabaseIntegrationTestBase.SetupLogger
     private void SetupLogger(string containsText, Action? callback = null)
     {
         var setup = _mockLogger.Setup(l => l.Log(
