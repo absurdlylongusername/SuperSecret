@@ -40,7 +40,7 @@ A secret link encapsulates:
 Secret links are in the form of:
 
 ````
-    {domain}/supersecret/{token}
+{domain}/supersecret/{token}
 ````    
 
 
@@ -106,12 +106,6 @@ This calculates to \<1 link per second on average, so throughput is not a concer
 I mainly optimised for storage, by storing as little as data as possible for operation.
 
 Assuming ~200 bytes per token row and 30 days max expiry, with background cleanup running periodically, total storage will not exceed 200-300MiB at any point. 
-
-- Throughput is relatively modest (&l 1 link per second on average), so CPU/latency is not the primary concern.
-- Storage is the main factor:
-
-    - Assuming ~200 bytes per token record and a 30-day maximum TTL, total storage remains well within a few hundred MiB over time.
-- Background cleanup keeps the active dataset small by removing expired tokens regularly.
 
 ## Testing
 
