@@ -1,42 +1,64 @@
 # SuperSecret Token Service
 
-Bonjour! This is my submission for the technical test for KYC360.
+A small application for generating single or multi-use secret links.
 
-## The Task
+When a user clicks a link, they see a personalised message (`You have found the secret, {username}!`).
+If the link has expired or is invalid they see a default messsage `There are no secrets here`.
 
-Design an application that generates secret links. When a user clicks the link, it will display a secret message for that user (`You have found the secret, {username}!`), but subsequent clicks will show a message saying the link is not available (`There are no secrets here`)
+## Features
 
-Extra functionality: 
-- Links can be clicked X number of times before expiring
-- Links can expire after a period of time
-
-
-Links can be created by an admin page where they can enter the username for the message, as well as number of clicks and expiry date.
-
-Links can also be created by an API endpoint that communicates using JSON.
-
-For all link creation methods, the username is required, but other parameters are optional.
-
-# My Solution
-
-My solution is a Razor Pages application with a minimal API.
-
-It has an Admin page (`/Admin`) for generating links where you can enter a username, max clicks, and the link's Time To Live (TTL) in seconds, minutes, hours and/or days.
-
-It exposes an API endpoint for link generation (`/api/links`) that has the same parameters as the admin page, but the expiry date is specified as a DateTime instead of separate parameters for seconds, minutes, etc.
-
-Generated links are in the form of `{domain}/supersecret/{token}`.
-
-Each token is a JWT-like token that is cryptographically signed and contains all relevant information about the link (username, expiry, max clicks, etc.)
-
-It uses a SQL Server database for storing token information to keep track of existing tokens and expiry.
+- Generate secret links via:
+    - Web admin UI (`/Admin`)
+    - JSON API (`/api/links`)
+- Personalised messages per user (required `username`)
+- Single-use or multi-use links (max click count)
+- Time-based expiry (TTL or absolute expiry time)
+- Cryptographically signed tokens with integrity protection
+- SQL Server backing store for token tracking and expiry clean-up
+- Background process to remove expired tokens
+- Unit, integration and UI tests (Playwright)
 
 
-## Token Generation and Validation
 
-Tokens stored as much relevant data as possible within themselves so it doesn't need to be stored in a database.
+## Tech Stack
 
-- **Token Claims Structure**:
+- **Backend:** .NET 9, ASP.NET Core Razor Pages + minimal API
+- **Data:** SQL Server 2022
+- **Security:** HMAC-signed JWT-style tokens, ULIDs for token IDs
+- **Testing:** NUnit (unit + integration tests), Playwright (UI tests)
+- **API exploration:** [Scalar](https://github.com/scalar/scalar) OpenAPI UI
+
+
+## Domain Overview
+
+A secret link encapsulates:
+
+- `username` – required; used to personalise the message
+- `maxClicks` – optional; number of times a link can be used
+- `expiry` – optional; a date time
+
+Secret links are in the form of:
+
+````
+{domain}/supersecret/{token}
+````    
+
+
+
+## Architecture
+
+### Application
+
+The whole thing is one application.
+
+The `/Admin` page is a Razor Pages frontend, and the `/api/links` endpoint is a minimal API.
+Both the API and UI use the same services and validation logic.
+
+### Token Generation and Validation
+
+Tokens store as much relevant data as possible within themselves so it doesn't need to be stored in the DB.
+
+- **JWT Token Claims Structure**:
 
     - `sub`: username
     - `jti`: unique token id (ULID)
@@ -58,41 +80,45 @@ Where `header` is of the form
 
 And `payload` is just the JSON of the claims stated above.
 
-Tokens are signed with a secret using the HMAC SHA256 algorithm. This signing is used for validation to ensure tokens are not tampered with.
+Tokens are signed with a secret key using the HMAC SHA256 algorithm. This signing is used for validation to ensure tokens are not tampered with.
 
 Every token has a unique ID `jti`, which is a ULID.
 
 Tokens have a maximum TTL of 30 days.
 
+### Database
 
-## Database
+SQL Server is used for storing token info.
 
-A SQL Server database is used to store information on existing tokens.
-
-When a token is created from a request, it is stored in the database. 
-
-There's two types of tokens: single use and multi use, each of which are stored in different tables.
+There are two types of tokens: Single Use, and Multi Use; both of which are stored in different tables.
 
 Single use tokens store only the token ID and the expiry date; multi use store the same but also the remaining clicks on the link/token.
 I considered using a single table for both types, but having a separate single use table makes extraction of single use tokens simpler (they can be deleted on access without checking remaining clicks, whereas a single table for both means checking remaining clicks for single use tokens).
 
-Token IDs are stored as 16 binary bytes instead of CHAR(26), for maximum storage efficiency.
+Token IDs are stored as 16 binary bytes (converting the ULID to 16 bytes) instead of CHAR(26), for maximum storage efficiency.
 
 A background service runs periodically to delete expired tokens in both tables.
 
 ## Storage and Speed Performance Considerations
 
-The brief states expected usage is 1M+ links a month, which calculates to <1 link per second. This is extremely low throughput, so speed is not really a concern based on the brief.
+The service is designed with a target of around 1M new links per month.
 
-The main concern is storage. 1M links a month, assuming a generous maximum of 200B of storage per link, the storage upper bound would never exceed 200 MiB if we have a max link TTL of 30 days.
+This calculates to \<1 link per second on average, so throughput is not a concern.
+I mainly optimised for storage, by storing as little as data as possible for operation.
 
-## Tests
+Assuming ~200 bytes per token row and 30 days max expiry, with background cleanup running periodically, total storage will not exceed 200-300MiB at any point. 
 
-I initially developed this by just writing the functionality, but switched to using a TDD approach midway due to the fact I encountered a bug that could be captured and reproduced within a test, and it occurred to me that it would make sense to specify my desired functionality in the form of tests and fix bugs that way, rather than doing it manually.
+- Throughput is relatively modest (&l 1 link per second on average), so CPU/latency is not the primary concern.
+- Storage is the main factor:
 
-This helped me avoid the situation of writing a bunch of code, running it, finding out it doesn't work, and spending ages fixing an obscure bug: a scenario which I've experienced many a time. Since the general API and interface of the program had already been specified, I was able to write tests first and then focus on refining implementation afterwards.
+    - Assuming ~200 bytes per token record and a 30-day maximum TTL, total storage remains well within a few hundred MiB over time.
+- Background cleanup keeps the active dataset small by removing expired tokens regularly.
 
-As a result, most of the code is unit and integration tested, however some of the tests are not finished or failing due to last minute changes I made and I didn't have time to go back and fix the tests, but I verified functionality manually.
+## Testing
+
+I developed this using TDD, so all the core functionality is tested with robust unit and integration tests.
+
+Token generation, validation, database interactions, UI interactions are all adequately tested using NUnit and Playwright.
 
 # How to run it
 
@@ -107,10 +133,10 @@ As a result, most of the code is unit and integration tested, however some of th
 
 After cloning the repository, open the solution Visual Studio and publish the SQL project to your SQL database
 
-- Right click SuperSecretDatabase in Solution Explorer -> Publish
-- Click Edit..
+- Right click `SuperSecretDatabase` in Solution Explorer -> `Publish`
+- Click `Edit..`
 - Select a DB connection, or if none appear go to the Browse tab and select one there
-- Enter database name (This database name must matc the database in your connection string in appsettings.json)
+- Enter database name (This database name must match the database in your connection string in `appsettings.json`)
 
 This will create the database schema for the application in your SQL Server database connection.
 
