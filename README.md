@@ -23,7 +23,7 @@ If the link has expired or is invalid they see a default messsage `There are no 
 ## Tech Stack
 
 - **Backend:** .NET 9, ASP.NET Core Razor Pages + minimal API
-- **Data:** SQL Server 2022
+- **Data:** SQL Server 2022 + Dapper
 - **Security:** HMAC-signed JWT-style tokens, ULIDs for token IDs
 - **Testing:** NUnit (unit + integration tests), Playwright (UI tests)
 - **API exploration:** [Scalar](https://github.com/scalar/scalar) OpenAPI UI
@@ -40,9 +40,8 @@ A secret link encapsulates:
 Secret links are in the form of:
 
 ````
-{domain}/supersecret/{token}
+    {domain}/supersecret/{token}
 ````    
-
 
 
 ## Architecture
@@ -88,7 +87,7 @@ Tokens have a maximum TTL of 30 days.
 
 ### Database
 
-SQL Server is used for storing token info.
+I used SQL Server + Dapper for database operations.
 
 There are two types of tokens: Single Use, and Multi Use; both of which are stored in different tables.
 
